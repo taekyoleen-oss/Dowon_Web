@@ -1,10 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { X } from "lucide-react";
+import Link from "next/link";
+import { X, Users } from "lucide-react";
 import { Field, Select } from "@/components/contact/form-primitives";
 import { summarizeForLawyer, type IntakeState } from "@/lib/ai/intake-slots";
 import { cn } from "@/lib/utils";
+
+type SuggestedLawyer = {
+  lawyer_id: string;
+  name: string;
+  match_score: number;
+  match_reasons: string[];
+};
 
 type Result = {
   ok: boolean;
@@ -30,6 +38,47 @@ export function IntakeConfirmModal({
   const [edits, setEdits] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [matches, setMatches] = React.useState<SuggestedLawyer[]>([]);
+
+  // Fetch lawyer suggestions when modal opens, derived from extracted slots.
+  React.useEffect(() => {
+    if (!open || !state.matter_type) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Map intake matter_type to practice area codes for the matcher.
+        const paMap: Record<string, string[]> = {
+          auto: ["auto"],
+          medical: ["medical"],
+          insurance: ["long-term", "life", "fire", "liability"],
+          contract: ["advisory"],
+          employment: ["advisory"],
+          consumer: ["advisory"],
+          criminal: ["criminal", "investigation"],
+          real_estate: ["advisory"],
+          other: [],
+        };
+        const practiceAreas = paMap[state.matter_type ?? "other"] ?? [];
+        const caseContext = [state.narrative, summary.sections.map((s) => s.value).join(" ")]
+          .filter(Boolean)
+          .join(" ")
+          .slice(0, 1200);
+        const res = await fetch("/api/ai/lawyer-match", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ caseContext, practiceAreas, limit: 3 }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setMatches(data.matches ?? []);
+      } catch {
+        /* silent — non-critical UX hint */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, state.matter_type, state.narrative, summary]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -118,6 +167,35 @@ export function IntakeConfirmModal({
               </div>
             ))}
           </dl>
+
+          {matches.length > 0 && (
+            <div className="mt-8 rounded-sm bg-paper-2 border border-paper-3 p-5">
+              <p className="label-mono text-gold inline-flex items-center gap-1.5">
+                <Users size={12} aria-hidden /> 예상 담당 변호사
+              </p>
+              <p className="mt-2 font-serif-ko text-[13.5px] text-ink-mute">
+                자동 매칭된 후보입니다. 실제 배정은 변호사 검수 후 확정됩니다.
+              </p>
+              <ul className="mt-4 space-y-2.5">
+                {matches.map((m) => (
+                  <li key={m.lawyer_id}>
+                    <Link
+                      href={`/people/lawyers/${m.lawyer_id}`}
+                      target="_blank"
+                      className="block p-2 -m-2 rounded-sm hover:bg-paper transition-colors"
+                    >
+                      <p className="font-serif-ko text-[15px] font-semibold text-ink">{m.name}</p>
+                      {m.match_reasons.length > 0 && (
+                        <p className="mt-1 font-mono text-[10px] uppercase tracking-label text-ink-mute">
+                          {m.match_reasons.join(" · ")}
+                        </p>
+                      )}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="mt-8">
             <label htmlFor="edits" className="label-mono block">

@@ -60,6 +60,24 @@ export async function POST(req: Request) {
     if (hasSupabaseConfig()) {
       const supabase = getServerSupabase();
 
+      // Idempotency guard — a session can only be confirmed once.
+      const { data: existing } = await supabase
+        .from("ai_conversations")
+        .select("consultation_request_id, confirmed_at")
+        .eq("session_id", body.sessionId)
+        .maybeSingle();
+
+      if (existing?.confirmed_at && existing.consultation_request_id) {
+        return NextResponse.json({
+          ok: true,
+          consultationId: existing.consultation_request_id,
+          message:
+            "이미 접수된 상담입니다. 영업일 기준 1~2일 내에 담당자가 연락드립니다.",
+          summary,
+          alreadyConfirmed: true,
+        });
+      }
+
       const contactInfo = {
         applicantName: body.contact.name,
         phone: body.contact.phone,
