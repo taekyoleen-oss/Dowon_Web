@@ -1,0 +1,183 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+ * Dowon Law — Design Tokens (PRD Section 4)
+ * ======================================================================= */
+:root {
+  /* --- Base — Paper & Ink ------------------------------------------- */
+  --color-paper:        #F5EFE4;
+  --color-paper-2:      #EBE3D3;
+  --color-paper-3:      #DFD6C2;
+  --color-ink:          #1A1814;
+  --color-ink-soft:     #3D3830;
+  --color-ink-mute:     #6B6258;
+
+  /* --- Accent — Gold ----------------------------------------------- */
+  --color-gold:         #B8924A;
+  --color-gold-bright:  #D4B06A;
+  --color-gold-deep:    #8C6E38;
+
+  /* --- Signals ------------------------------------------------------ */
+  --color-rust:         #8A3A25;
+  --color-forest:       #2F4A3A;
+
+  /* --- Dark areas (Footer etc.) ------------------------------------ */
+  --color-night:        #0F0E0C;
+  --color-night-2:      #161410;
+
+  /* --- Semantic UI -------------------------------------------------- */
+  --bg:                 var(--color-paper);
+  --bg-elevated:        var(--color-paper-2);
+  --border:             var(--color-paper-3);
+  --text:               var(--color-ink);
+  --text-soft:          var(--color-ink-soft);
+  --text-mute:          var(--color-ink-mute);
+  --accent:             var(--color-gold);
+  --accent-hover:       var(--color-gold-bright);
+  --cta:                var(--color-gold-deep);
+
+  /* --- Typography --------------------------------------------------- */
+  --font-display:  var(--font-cormorant), "Noto Serif KR", serif;
+  --font-serif-ko: var(--font-noto-serif-kr), var(--font-cormorant), serif;
+  --font-sans-ko:  var(--font-pretendard), system-ui, sans-serif;
+  --font-mono:     var(--font-jetbrains-mono), monospace;
+
+  --text-display:   clamp(40px, 9vw, 88px);
+  --text-h1:        clamp(28px, 5vw, 44px);
+  --text-h2:        clamp(22px, 3.5vw, 32px);
+  --text-h3:        clamp(18px, 2.5vw, 22px);
+  --text-body-lg:   17px;
+  --text-body:      15.5px;
+  --text-sm:        13.5px;
+  --text-xs:        11px;
+
+  --leading-tight:  1.2;
+  --leading-base:   1.75;
+  --leading-loose:  1.9;
+
+  --tracking-tight:  -0.02em;
+  --tracking-normal: 0;
+  --tracking-label:  0.18em;
+
+  /* --- Spacing ------------------------------------------------------ */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  24px;
+  --space-6:  32px;
+  --space-7:  48px;
+  --space-8:  64px;
+  --space-9:  96px;
+  --space-10: 128px;
+
+  --section-y-mobile:  64px;
+  --section-y-tablet:  96px;
+  --section-y-desktop: 128px;
+
+  --container-narrow: 720px;
+  --container-base:   1080px;
+  --container-wide:   1280px;
+
+  /* --- Radius ------------------------------------------------------- */
+  --radius-none:  0;
+  --radius-sm:    2px;
+  --radius-md:    4px;
+  --radius-pill:  9999px;
+
+  /* --- Shadow ------------------------------------------------------- */
+  --shadow-1: 0 1px 2px rgba(26, 24, 20, 0.06);
+  --shadow-2: 0 4px 12px rgba(26, 24, 20, 0.08);
+  --shadow-paper: 0 20px 40px -20px rgba(26, 24, 20, 0.18);
+
+  /* --- Motion ------------------------------------------------------- */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast:   180ms;
+  --duration-base:   320ms;
+  --duration-slow:   600ms;
+  --duration-reveal: 900ms;
+}
+
+/* =========================================================================
+ * Base layer
+ * ======================================================================= */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-serif-ko);
+    font-size: var(--text-body);
+    line-height: var(--leading-base);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif-ko);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    color: var(--text);
+  }
+
+  ::selection {
+    background-color: var(--color-gold);
+    color: var(--color-paper);
+  }
+}
+
+/* =========================================================================
+ * Utility classes for tokens that Tailwind cannot express cleanly
+ * ======================================================================= */
+@layer utilities {
+  .font-display  { font-family: var(--font-display); font-style: italic; }
+  .font-serif-ko { font-family: var(--font-serif-ko); }
+  .font-sans-ko  { font-family: var(--font-sans-ko); }
+  .font-mono-ui  { font-family: var(--font-mono); }
+
+  .text-display { font-size: var(--text-display); line-height: var(--leading-tight); letter-spacing: var(--tracking-tight); }
+  .text-h1      { font-size: var(--text-h1);      line-height: var(--leading-tight); letter-spacing: var(--tracking-tight); }
+  .text-h2      { font-size: var(--text-h2);      line-height: var(--leading-tight); }
+  .text-h3      { font-size: var(--text-h3);      line-height: var(--leading-tight); }
+  .text-body-lg { font-size: var(--text-body-lg); line-height: var(--leading-base); }
+  .text-body    { font-size: var(--text-body);    line-height: var(--leading-base); }
+  .text-meta-sm { font-size: var(--text-sm);      line-height: var(--leading-base); }
+  .text-meta-xs { font-size: var(--text-xs);      letter-spacing: var(--tracking-label); text-transform: uppercase; }
+
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--text-soft);
+  }
+
+  .container-narrow { max-width: var(--container-narrow); margin-inline: auto; padding-inline: 24px; }
+  .container-base   { max-width: var(--container-base);   margin-inline: auto; padding-inline: 24px; }
+  .container-wide   { max-width: var(--container-wide);   margin-inline: auto; padding-inline: 24px; }
+
+  @media (min-width: 1024px) {
+    .container-narrow,
+    .container-base,
+    .container-wide { padding-inline: 60px; }
+  }
+
+  .section-y {
+    padding-block: var(--section-y-mobile);
+  }
+  @media (min-width: 768px) { .section-y { padding-block: var(--section-y-tablet); } }
+  @media (min-width: 1280px) { .section-y { padding-block: var(--section-y-desktop); } }
+
+  .border-hairline { border: 1px solid var(--border); }
+  .border-strong   { border: 1px solid var(--color-ink); }
+  .border-accent   { border: 1px solid var(--color-gold); }
+
+  .shadow-paper { box-shadow: var(--shadow-paper); }
+}
