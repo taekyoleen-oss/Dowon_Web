@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAnthropic, hasAnthropicConfig, CLAUDE_MODEL, SYSTEM_FOOTER } from "@/lib/ai/anthropic";
-import { withAudit } from "@/lib/ai/audit";
-import { extractJson, textOf } from "@/lib/ai/json";
+import { recordAudit } from "@/lib/ai/audit";
 import { getServerSupabase, hasSupabaseConfig } from "@/lib/supabase/server";
+import {
+  ndjsonFromAnthropicStream,
+  ndjsonResponse,
+  ndjsonStubResponse,
+  SHARED_STREAM_INSTRUCTIONS,
+} from "@/lib/ai/stream";
 import {
   emptyIntakeState,
   mergeIntakeState,
-  deriveCompleteness,
   matterTypes,
   matterTypeLabels,
   type IntakeState,
@@ -57,10 +61,11 @@ const SYSTEM_PROMPT = `당신은 법무법인 도원의 사건 정보 수집 도
 8. desired_outcome: { options[](compensation|settlement|criminal|retraction|injunction|other), notes }
 9. prior_actions: { police_report, insurance_claim, settlement_attempt, other_lawyer, notes }
 
-[출력 — JSON only, no prose outside]
+${SHARED_STREAM_INSTRUCTIONS}
+
+[State JSON 스키마]
 {
-  "reply": "사용자에게 보낼 한국어 답변. 정중한 ‘~습니다/요’ 체. 한 단락 이내.",
-  "intake_state": {  // 위 슬롯 구조와 동일. 새로 알게 된 값만 채우고 나머지는 생략 가능. null은 '모름'을 의미.
+  "intake_state": {
     "matter_type": "...",
     "when": { ... },
     "where": { ... },
@@ -72,15 +77,12 @@ const SYSTEM_PROMPT = `당신은 법무법인 도원의 사건 정보 수집 도
     "prior_actions": { ... }
   },
   "next_question_target": "matter_type" | "when" | "where" | "parties" | "narrative" | "damages" | "evidence" | "desired_outcome" | "prior_actions" | "summary" | "done",
-  "should_offer_summary": true | false   // 핵심 슬롯이 7개 이상 채워졌고 사용자가 추가 입력을 멈출 만한 시점이면 true
+  "should_offer_summary": true | false
 }
-
-응답은 JSON 1개. 다른 텍스트 포함 금지.
 
 ${SYSTEM_FOOTER}`;
 
-type IntakeReply = {
-  reply: string;
+type IntakeStateJson = {
   intake_state: Partial<IntakeState>;
   next_question_target: string;
   should_offer_summary: boolean;
@@ -104,98 +106,104 @@ export async function POST(req: Request) {
   const sessionId = body.sessionId ?? newSessionId();
   const priorState = (body.state as IntakeState | undefined) ?? emptyIntakeState();
 
-  // Stub fallback when Anthropic isn't configured
+  // Stub fallback — same NDJSON wire so the client doesn't need branching.
   if (!hasAnthropicConfig()) {
-    const stubReply: IntakeReply = {
-      reply:
-        "본 도구는 법률 자문이 아닌 사건 정보 정리 도우미입니다. 정확한 동작을 위해서는 ANTHROPIC_API_KEY가 필요합니다. 어떤 일이 있으셨는지 자유롭게 말씀해 주세요.",
-      intake_state: {},
-      next_question_target: "narrative",
-      should_offer_summary: false,
-    };
-    return NextResponse.json({
-      ...stubReply,
-      sessionId,
-      state: priorState,
-      legal_notice: SYSTEM_FOOTER,
-      stub: true,
-    });
+    return ndjsonStubResponse([
+      {
+        type: "token",
+        text:
+          "본 도구는 법률 자문이 아닌 사건 정보 정리 도우미입니다. 정확한 동작을 위해서는 ANTHROPIC_API_KEY가 필요합니다. 어떤 일이 있으셨는지 자유롭게 말씀해 주세요.",
+      },
+      {
+        type: "state",
+        sessionId,
+        state: priorState,
+        completeness: priorState.completeness,
+        next_question_target: "narrative",
+        should_offer_summary: false,
+        legal_notice: SYSTEM_FOOTER,
+        stub: true,
+      },
+    ]);
   }
 
-  const result = await withAudit("intake", { sessionId, hasState: !!body.state }, async () => {
-    const anthropic = getAnthropic();
-    const messages: Array<{ role: "user" | "assistant"; content: string }> = [
+  const anthropic = getAnthropic();
+  const t0 = Date.now();
+  const aiStream = anthropic.messages.stream({
+    model: CLAUDE_MODEL,
+    max_tokens: 1500,
+    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: [
       ...body.history.map((m) => ({ role: m.role, content: m.content })),
       {
         role: "user",
         content:
           `[현재까지 정리된 상태]\n${JSON.stringify(priorState, null, 2)}\n\n[사용자의 새 발화]\n${body.message}`,
       },
-    ];
+    ],
+  });
 
-    const response = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 1500,
-      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-      messages,
-    });
-
-    const text = textOf(response.content);
-    let parsed: IntakeReply;
-    try {
-      parsed = extractJson<IntakeReply>(text);
-    } catch {
-      parsed = {
-        reply: text || "잠시 다시 말씀해 주시겠어요?",
-        intake_state: {},
-        next_question_target: "narrative",
-        should_offer_summary: false,
+  const stream = ndjsonFromAnthropicStream<IntakeStateJson>(aiStream, {
+    enrich: (parsed, fullReply) => {
+      const delta = parsed?.intake_state ?? {};
+      const nextState = mergeIntakeState(priorState, delta);
+      const offerSummary =
+        (parsed?.should_offer_summary ?? false) || nextState.ready_for_summary;
+      return {
+        sessionId,
+        state: nextState,
+        completeness: nextState.completeness,
+        next_question_target: parsed?.next_question_target ?? "narrative",
+        should_offer_summary: offerSummary,
+        legal_notice: SYSTEM_FOOTER,
+        // expose the assembled reply so the client can rebuild full text after
+        // a network blip (the held-back tail) — also handy for audit logs.
+        reply: fullReply,
       };
-    }
+    },
+    onFinal: async (parsed, fullReply) => {
+      const delta = parsed?.intake_state ?? {};
+      const nextState = mergeIntakeState(priorState, delta);
+      const durationMs = Date.now() - t0;
 
-    const tokensUsed =
-      (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
-    return { output: parsed, tokensUsed };
+      // Audit (best-effort)
+      recordAudit({
+        toolName: "intake",
+        input: { sessionId, hasState: !!body.state },
+        output: { matter_type: nextState.matter_type, completeness: nextState.completeness },
+        durationMs,
+      }).catch(() => undefined);
+
+      // Persist conversation turn (best-effort)
+      if (hasSupabaseConfig()) {
+        try {
+          const supabase = getServerSupabase();
+          const newMessages = [
+            ...body.history,
+            { role: "user" as const, content: body.message },
+            { role: "assistant" as const, content: fullReply },
+          ];
+          await supabase
+            .from("ai_conversations")
+            .upsert(
+              {
+                session_id: sessionId,
+                persona: "personal",
+                messages: newMessages,
+                intake_state: nextState,
+                classification: {
+                  matter_type: nextState.matter_type,
+                  completeness: nextState.completeness,
+                },
+              },
+              { onConflict: "session_id" }
+            );
+        } catch (e) {
+          console.warn("[intake] persist warning:", e);
+        }
+      }
+    },
   });
 
-  const nextState = mergeIntakeState(priorState, result.intake_state ?? {});
-  // Server-side override: if our completeness derivation thinks we're ready,
-  // honor that even if the model said otherwise (safety net).
-  const offerSummary = result.should_offer_summary || nextState.ready_for_summary;
-
-  // Persist conversation turn (best-effort — non-blocking is overkill at this volume)
-  if (hasSupabaseConfig()) {
-    try {
-      const supabase = getServerSupabase();
-      const newMessages = [
-        ...body.history,
-        { role: "user" as const, content: body.message },
-        { role: "assistant" as const, content: result.reply },
-      ];
-      await supabase
-        .from("ai_conversations")
-        .upsert(
-          {
-            session_id: sessionId,
-            persona: "personal",
-            messages: newMessages,
-            intake_state: nextState,
-            classification: { matter_type: nextState.matter_type, completeness: nextState.completeness },
-          },
-          { onConflict: "session_id" }
-        );
-    } catch (e) {
-      console.warn("[intake] persist warning:", e);
-    }
-  }
-
-  return NextResponse.json({
-    sessionId,
-    reply: result.reply,
-    state: nextState,
-    completeness: deriveCompleteness(nextState),
-    next_question_target: result.next_question_target,
-    should_offer_summary: offerSummary,
-    legal_notice: SYSTEM_FOOTER,
-  });
+  return ndjsonResponse(stream);
 }

@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAnthropic, hasAnthropicConfig, CLAUDE_MODEL, SYSTEM_FOOTER } from "@/lib/ai/anthropic";
-import { withAudit } from "@/lib/ai/audit";
-import { extractJson, textOf } from "@/lib/ai/json";
+import { recordAudit } from "@/lib/ai/audit";
+import {
+  ndjsonFromAnthropicStream,
+  ndjsonResponse,
+  ndjsonStubResponse,
+  SHARED_STREAM_INSTRUCTIONS,
+} from "@/lib/ai/stream";
 import { lawyers, practiceAreaLabels, type PracticeAreaCode } from "@/lib/data/lawyers";
 
 export const runtime = "nodejs";
@@ -42,16 +47,17 @@ const SYSTEM_PROMPT = `당신은 법무법인 도원의 사건 유형 진단 챗
 
 [가드레일 — 반드시 준수]
 - 구체적 법률 자문(특정 청구액, 승소 가능성, 특정 조항 해석)을 제공하지 마십시오.
-- 승소 가능성·결과를 단정하지 마십시오. "○○일 가능성이 있다"는 표현도 피하십시오.
+- 승소 가능성·결과를 단정하지 마십시오.
 - 변호사법 제23조 위반 표현(최고·1위·보장·확실 등)을 사용하지 마십시오.
 - 응급 상황(자살 위협, 폭력 위험)을 감지하면 즉시 119/1577-0199(생명의전화)를 안내하고 인간 응대 연결을 권유하십시오.
 
 [가능한 사건 유형 (matter_type 분류 코드)]
 ${PRACTICE_AREA_CODES.map((c) => `- ${c}: ${practiceAreaLabels[c]}`).join("\n")}
 
-[출력 형식 — JSON]
+${SHARED_STREAM_INSTRUCTIONS}
+
+[State JSON 스키마]
 {
-  "reply": "방문자에게 보낼 자연어 답변 (한국어, 정중한 ‘~습니다’ 체)",
   "needs_more_info": true|false,
   "matter_type": "위 코드 중 하나 또는 unknown",
   "confidence": 0~1,
@@ -60,12 +66,9 @@ ${PRACTICE_AREA_CODES.map((c) => `- ${c}: ${practiceAreaLabels[c]}`).join("\n")}
   "next_action": "consultation" | "ask_more" | "library"
 }
 
-응답은 반드시 위 JSON 구조의 객체 하나입니다. 다른 텍스트는 포함하지 마십시오.
-
 ${SYSTEM_FOOTER}`;
 
 type ClassifyResult = {
-  reply: string;
   needs_more_info: boolean;
   matter_type: string;
   confidence: number;
@@ -99,11 +102,14 @@ function matchLawyers(matter: string, limit = 3) {
   }));
 }
 
+function newConversationId() {
+  return "trg_" + Math.random().toString(36).slice(2, 11) + Date.now().toString(36);
+}
+
 export async function POST(req: Request) {
   let body: z.infer<typeof bodySchema>;
   try {
-    const json = await req.json();
-    body = bodySchema.parse(json);
+    body = bodySchema.parse(await req.json());
   } catch (e) {
     return NextResponse.json(
       { error: "Invalid request", details: e instanceof Error ? e.message : String(e) },
@@ -111,82 +117,67 @@ export async function POST(req: Request) {
     );
   }
 
+  const conversationId = body.conversationId ?? newConversationId();
+
   if (!hasAnthropicConfig()) {
-    // Fallback: deterministic stub so dev UI is usable without keys
-    const stub: ClassifyResult = {
-      reply:
-        "본 답변은 일반 정보 안내입니다. 더 정확한 도움을 위해 ANTHROPIC_API_KEY가 설정되어야 합니다. " +
-        "사건 유형을 정확히 분류하려면 상담 신청 폼을 이용해주세요.",
-      needs_more_info: true,
-      matter_type: "unknown",
-      confidence: 0,
-      needed_documents: [],
-      estimated_timeline: "—",
-      next_action: "consultation",
-    };
-    return NextResponse.json({
-      ...stub,
-      conversationId: body.conversationId ?? cryptoRandomId(),
-      suggested_lawyers: [],
-      legal_notice: SYSTEM_FOOTER,
-      stub: true,
-    });
+    return ndjsonStubResponse([
+      {
+        type: "token",
+        text:
+          "본 답변은 일반 정보 안내입니다. 더 정확한 도움을 위해 ANTHROPIC_API_KEY가 설정되어야 합니다. 사건 유형을 정확히 분류하려면 상담 신청 폼을 이용해주세요.",
+      },
+      {
+        type: "state",
+        conversationId,
+        matter_type: "unknown",
+        confidence: 0,
+        needs_more_info: true,
+        needed_documents: [],
+        estimated_timeline: "—",
+        next_action: "consultation",
+        suggested_lawyers: [],
+        legal_notice: SYSTEM_FOOTER,
+        stub: true,
+      },
+    ]);
   }
 
-  const result = await withAudit(
-    "triage",
-    { message: body.message, persona: body.context?.persona },
-    async () => {
-      const anthropic = getAnthropic();
-      const response = await anthropic.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: 1500,
-        system: [
-          {
-            type: "text",
-            text: SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        messages: [
-          ...body.history.map((m) => ({ role: m.role, content: m.content })),
-          { role: "user" as const, content: body.message },
-        ],
-      });
-
-      const text = textOf(response.content);
-
-      let parsed: ClassifyResult;
-      try {
-        parsed = extractJson<ClassifyResult>(text);
-      } catch {
-        parsed = {
-          reply: text || "다시 한 번 말씀해 주세요.",
-          needs_more_info: true,
-          matter_type: "unknown",
-          confidence: 0,
-          needed_documents: [],
-          estimated_timeline: "—",
-          next_action: "ask_more",
-        };
-      }
-
-      const tokensUsed =
-        (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
-
-      return { output: parsed, tokensUsed };
-    }
-  );
-
-  return NextResponse.json({
-    ...result,
-    conversationId: body.conversationId ?? cryptoRandomId(),
-    suggested_lawyers: matchLawyers(result.matter_type),
-    legal_notice: SYSTEM_FOOTER,
+  const anthropic = getAnthropic();
+  const t0 = Date.now();
+  const aiStream = anthropic.messages.stream({
+    model: CLAUDE_MODEL,
+    max_tokens: 1500,
+    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: [
+      ...body.history.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user", content: body.message },
+    ],
   });
-}
 
-function cryptoRandomId() {
-  // Tiny, dependency-free id.
-  return "trg_" + Math.random().toString(36).slice(2, 11) + Date.now().toString(36);
+  const stream = ndjsonFromAnthropicStream<ClassifyResult>(aiStream, {
+    enrich: (parsed) => {
+      const matter = parsed?.matter_type ?? "unknown";
+      return {
+        conversationId,
+        matter_type: matter,
+        confidence: parsed?.confidence ?? 0,
+        needs_more_info: parsed?.needs_more_info ?? true,
+        needed_documents: parsed?.needed_documents ?? [],
+        estimated_timeline: parsed?.estimated_timeline ?? "—",
+        next_action: parsed?.next_action ?? "ask_more",
+        suggested_lawyers: matchLawyers(matter),
+        legal_notice: SYSTEM_FOOTER,
+      };
+    },
+    onFinal: (parsed) => {
+      recordAudit({
+        toolName: "triage",
+        input: { message: body.message.slice(0, 200), persona: body.context?.persona },
+        output: { matter_type: parsed?.matter_type, confidence: parsed?.confidence },
+        durationMs: Date.now() - t0,
+      }).catch(() => undefined);
+    },
+  });
+
+  return ndjsonResponse(stream);
 }

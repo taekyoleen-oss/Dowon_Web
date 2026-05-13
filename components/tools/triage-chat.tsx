@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Send, Sparkles } from "lucide-react";
 import { LegalDisclaimer } from "@/components/ai/legal-disclaimer";
 import { practiceAreaLabels, type PracticeAreaCode } from "@/lib/data/lawyers";
+import { consumeNdjsonStream } from "@/lib/ai/stream-client";
 import { cn } from "@/lib/utils";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -15,7 +16,6 @@ type SuggestedLawyer = {
   match_score: number;
 };
 type TriageResponse = {
-  reply: string;
   needs_more_info: boolean;
   matter_type: string;
   confidence: number;
@@ -66,8 +66,18 @@ export function TriageChat() {
     setInput("");
     setLoading(true);
     const history = messages.slice(1);
-    const next: Message[] = [...messages, { role: "user", content: text }];
-    setMessages(next);
+    const userMsg: Message = { role: "user", content: text };
+    const assistantMsg: Message = { role: "assistant", content: "" };
+    let assistantIdx = -1;
+
+    setMessages((prev) => {
+      const next = [...prev, userMsg, assistantMsg];
+      assistantIdx = next.length - 1;
+      return next;
+    });
+
+    let accumulated = "";
+    let firstTokenSeen = false;
 
     try {
       const res = await fetch("/api/ai/triage", {
@@ -75,15 +85,64 @@ export function TriageChat() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: text, history, conversationId }),
       });
-      const data: TriageResponse = await res.json();
-      setLatest(data);
-      setConversationId(data.conversationId);
-      setMessages([...next, { role: "assistant", content: data.reply }]);
+
+      await consumeNdjsonStream(res, {
+        onToken: (chunk) => {
+          accumulated += chunk;
+          if (!firstTokenSeen) {
+            firstTokenSeen = true;
+            setLoading(false);
+          }
+          setMessages((prev) => {
+            if (assistantIdx < 0 || assistantIdx >= prev.length) return prev;
+            const copy = [...prev];
+            copy[assistantIdx] = { role: "assistant", content: accumulated };
+            return copy;
+          });
+        },
+        onState: (payload) => {
+          if (payload.conversationId && typeof payload.conversationId === "string") {
+            setConversationId(payload.conversationId);
+          }
+          setLatest({
+            conversationId:
+              (payload.conversationId as string | undefined) ?? conversationId ?? "",
+            matter_type: (payload.matter_type as string) ?? "unknown",
+            confidence: (payload.confidence as number) ?? 0,
+            needs_more_info: (payload.needs_more_info as boolean) ?? true,
+            needed_documents: (payload.needed_documents as string[]) ?? [],
+            estimated_timeline: (payload.estimated_timeline as string) ?? "—",
+            next_action:
+              (payload.next_action as TriageResponse["next_action"]) ?? "ask_more",
+            suggested_lawyers:
+              (payload.suggested_lawyers as SuggestedLawyer[]) ?? [],
+            stub: payload.stub as boolean | undefined,
+          });
+        },
+        onError: (err) => {
+          console.error("[triage] stream error:", err);
+          setMessages((prev) => {
+            if (assistantIdx < 0 || assistantIdx >= prev.length) return prev;
+            const copy = [...prev];
+            copy[assistantIdx] = {
+              role: "assistant",
+              content: "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+            };
+            return copy;
+          });
+        },
+      });
     } catch (e) {
-      setMessages([
-        ...next,
-        { role: "assistant", content: "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." },
-      ]);
+      console.error(e);
+      setMessages((prev) => {
+        if (assistantIdx < 0 || assistantIdx >= prev.length) return prev;
+        const copy = [...prev];
+        copy[assistantIdx] = {
+          role: "assistant",
+          content: "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        };
+        return copy;
+      });
     } finally {
       setLoading(false);
     }
@@ -129,7 +188,7 @@ export function TriageChat() {
               </div>
             </li>
           ))}
-          {loading && (
+          {loading && messages[messages.length - 1]?.role !== "assistant" && (
             <li>
               <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute mb-1">도원 AI</p>
               <p className="font-serif-ko text-[15px] text-ink-mute italic">답변을 작성 중입니다...</p>

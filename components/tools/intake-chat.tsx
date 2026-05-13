@@ -2,23 +2,30 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Send, Sparkles, CheckCircle2 } from "lucide-react";
+import { Send, Sparkles, CheckCircle2, RotateCw } from "lucide-react";
 import { LegalDisclaimer } from "@/components/ai/legal-disclaimer";
 import { IntakeProgress } from "./intake-progress";
 import { IntakeConfirmModal } from "./intake-confirm-modal";
 import { emptyIntakeState, type IntakeState } from "@/lib/ai/intake-slots";
+import { consumeNdjsonStream } from "@/lib/ai/stream-client";
 import { cn } from "@/lib/utils";
 
 type Message = { role: "user" | "assistant"; content: string };
 
-type ApiResponse = {
+const STORAGE_KEY = "dowon_intake_v1";
+const STORAGE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+type Persisted = {
   sessionId: string;
-  reply: string;
+  messages: Message[];
   state: IntakeState;
-  completeness: number;
-  next_question_target: string;
-  should_offer_summary: boolean;
-  stub?: boolean;
+  savedAt: number;
+};
+
+const GREETING: Message = {
+  role: "assistant",
+  content:
+    "안녕하세요. 도원의 사건 정보 정리 도우미입니다. 본 대화는 법률 자문이 아니며, 변호사 상담 전에 사건 정보를 정확히 정리해 변호사에게 전달하기 위한 목적입니다.\n\n어떤 일이 있으셨는지 편하게 말씀해 주세요. 차례차례 여쭤보겠습니다.",
 };
 
 const examples = [
@@ -27,14 +34,47 @@ const examples = [
   "공사 대금을 받지 못해서 받아낼 방법이 있을지 알고 싶어요.",
 ];
 
+function loadPersisted(): Persisted | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Persisted;
+    if (!parsed.sessionId || !Array.isArray(parsed.messages)) return null;
+    if (Date.now() - parsed.savedAt > STORAGE_TTL_MS) {
+      window.localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function persist(data: Persisted) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    /* quota or private mode — silently ignore */
+  }
+}
+
+function clearPersisted() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function IntakeChat() {
-  const [messages, setMessages] = React.useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "안녕하세요. 도원의 사건 정보 정리 도우미입니다. 본 대화는 법률 자문이 아니며, 변호사 상담 전에 사건 정보를 정확히 정리해 변호사에게 전달하기 위한 목적입니다.\n\n어떤 일이 있으셨는지 편하게 말씀해 주세요. 차례차례 여쭤보겠습니다.",
-    },
-  ]);
+  // Resume offer (only shown on mount when localStorage has a recent session)
+  const [resumeOffer, setResumeOffer] = React.useState<Persisted | null>(null);
+  const [resumed, setResumed] = React.useState(false);
+
+  const [messages, setMessages] = React.useState<Message[]>([GREETING]);
   const [input, setInput] = React.useState("");
   const [sessionId, setSessionId] = React.useState<string | undefined>();
   const [state, setState] = React.useState<IntakeState>(emptyIntakeState());
@@ -44,9 +84,21 @@ export function IntakeChat() {
   const listRef = React.useRef<HTMLUListElement | null>(null);
   const isFirstRender = React.useRef(true);
 
-  // Scroll the chat container only — never the page. scrollIntoView on the
-  // sentinel div was scrolling the surrounding page so the entire chat moved
-  // out of the viewport on every new message.
+  // Check for resumable session on mount.
+  React.useEffect(() => {
+    const found = loadPersisted();
+    if (found && found.messages.length > 1) {
+      setResumeOffer(found);
+    }
+  }, []);
+
+  // Persist on every meaningful change.
+  React.useEffect(() => {
+    if (!sessionId || submitted?.ok) return;
+    persist({ sessionId, messages, state, savedAt: Date.now() });
+  }, [sessionId, messages, state, submitted?.ok]);
+
+  // Scroll the chat container only — never the page.
   React.useEffect(() => {
     const el = listRef.current;
     if (!el) return;
@@ -57,13 +109,38 @@ export function IntakeChat() {
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
+  const resume = () => {
+    if (!resumeOffer) return;
+    setMessages(resumeOffer.messages);
+    setSessionId(resumeOffer.sessionId);
+    setState(resumeOffer.state);
+    setResumed(true);
+    setResumeOffer(null);
+  };
+
+  const startFresh = () => {
+    clearPersisted();
+    setResumeOffer(null);
+  };
+
   const send = async (text: string) => {
     if (!text.trim() || loading || submitted?.ok) return;
     setInput("");
     setLoading(true);
-    const history = messages.slice(1);
-    const next: Message[] = [...messages, { role: "user", content: text }];
-    setMessages(next);
+    const history = messages.slice(1); // exclude greeting
+    const userMsg: Message = { role: "user", content: text };
+    const assistantMsg: Message = { role: "assistant", content: "" };
+    let assistantIdx = -1;
+
+    // Insert user message and placeholder assistant message in one update.
+    setMessages((prev) => {
+      const next = [...prev, userMsg, assistantMsg];
+      assistantIdx = next.length - 1;
+      return next;
+    });
+
+    let accumulated = "";
+    let firstTokenSeen = false;
 
     try {
       const res = await fetch("/api/ai/intake", {
@@ -71,18 +148,62 @@ export function IntakeChat() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: text, history, state, sessionId }),
       });
-      const data: ApiResponse = await res.json();
-      setSessionId(data.sessionId);
-      setState(data.state);
-      setMessages([...next, { role: "assistant", content: data.reply }]);
-      if (data.should_offer_summary && !confirmOpen && !submitted) {
-        // soft nudge — not auto-open per the agreed UX
-      }
-    } catch {
-      setMessages([
-        ...next,
-        { role: "assistant", content: "일시적인 오류가 발생했습니다. 잠시 후 다시 말씀해 주세요." },
-      ]);
+
+      await consumeNdjsonStream(res, {
+        onToken: (chunk) => {
+          accumulated += chunk;
+          if (!firstTokenSeen) {
+            firstTokenSeen = true;
+            setLoading(false); // first token arrived — hide "정리 중..." indicator
+          }
+          setMessages((prev) => {
+            if (assistantIdx < 0 || assistantIdx >= prev.length) return prev;
+            const copy = [...prev];
+            copy[assistantIdx] = { role: "assistant", content: accumulated };
+            return copy;
+          });
+        },
+        onState: (payload) => {
+          if (payload.sessionId && typeof payload.sessionId === "string") {
+            setSessionId(payload.sessionId);
+          }
+          if (payload.state && typeof payload.state === "object") {
+            setState(payload.state as IntakeState);
+          }
+          // If we had no streamed text (rare), use the consolidated reply.
+          if (!accumulated && typeof payload.reply === "string" && payload.reply) {
+            setMessages((prev) => {
+              if (assistantIdx < 0 || assistantIdx >= prev.length) return prev;
+              const copy = [...prev];
+              copy[assistantIdx] = { role: "assistant", content: payload.reply as string };
+              return copy;
+            });
+          }
+        },
+        onError: (err) => {
+          console.error("[intake] stream error:", err);
+          setMessages((prev) => {
+            if (assistantIdx < 0 || assistantIdx >= prev.length) return prev;
+            const copy = [...prev];
+            copy[assistantIdx] = {
+              role: "assistant",
+              content: "일시적인 오류가 발생했습니다. 잠시 후 다시 말씀해 주세요.",
+            };
+            return copy;
+          });
+        },
+      });
+    } catch (e) {
+      console.error(e);
+      setMessages((prev) => {
+        if (assistantIdx < 0 || assistantIdx >= prev.length) return prev;
+        const copy = [...prev];
+        copy[assistantIdx] = {
+          role: "assistant",
+          content: "일시적인 오류가 발생했습니다. 잠시 후 다시 말씀해 주세요.",
+        };
+        return copy;
+      });
     } finally {
       setLoading(false);
     }
@@ -91,6 +212,8 @@ export function IntakeChat() {
   const canConfirm = state.completeness >= 0.5 && !!sessionId;
 
   if (submitted?.ok) {
+    // Clear localStorage so a fresh visit starts clean.
+    clearPersisted();
     return (
       <div className="bg-paper border border-paper-3 rounded-md p-10 lg:p-14 text-center max-w-2xl mx-auto">
         <CheckCircle2 size={48} className="mx-auto text-forest" aria-hidden />
@@ -124,12 +247,46 @@ export function IntakeChat() {
 
   return (
     <>
+      {/* Resume offer (rendered before chat so user sees it first) */}
+      {resumeOffer && (
+        <div className="mb-6 rounded-md border border-gold bg-paper-2 p-5 lg:p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-label text-gold">RESUME</p>
+            <p className="mt-2 font-serif-ko text-body-lg text-ink">
+              이전에 진행하시던 대화가 있습니다 ({resumeOffer.messages.length - 1}턴 ·
+              {" "}{Math.round(resumeOffer.state.completeness * 100)}% 정리됨)
+            </p>
+            <p className="mt-1 font-serif-ko text-[13px] text-ink-soft">
+              저장 시각 — {new Date(resumeOffer.savedAt).toLocaleString("ko-KR")}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={resume}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-sm bg-gold-deep text-paper font-sans-ko text-[14px] font-medium hover:bg-gold transition-colors"
+            >
+              <RotateCw size={14} aria-hidden /> 이어하기
+            </button>
+            <button
+              type="button"
+              onClick={startFresh}
+              className="inline-flex items-center px-5 py-2.5 rounded-sm border border-ink text-ink font-sans-ko text-[14px] font-medium hover:bg-paper transition-colors"
+            >
+              새로 시작
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
         {/* Chat column */}
         <div className="flex flex-col bg-paper border border-paper-3 rounded-md overflow-hidden">
           <div className="px-6 py-4 border-b border-paper-3 flex items-center gap-2">
             <Sparkles size={16} className="text-gold-deep" aria-hidden />
-            <p className="font-mono text-[11px] uppercase tracking-label text-ink">AI Intake · 사건 정보 정리</p>
+            <p className="font-mono text-[11px] uppercase tracking-label text-ink">
+              AI Intake · 사건 정보 정리{resumed && <span className="ml-2 text-gold">· 이어하는 중</span>}
+            </p>
           </div>
 
           <ul
@@ -147,14 +304,15 @@ export function IntakeChat() {
                 <div
                   className={cn(
                     "inline-block px-4 py-3 rounded-md font-serif-ko text-[15px] leading-base whitespace-pre-wrap",
-                    m.role === "user" ? "bg-ink text-paper" : "bg-paper-2 text-ink"
+                    m.role === "user" ? "bg-ink text-paper" : "bg-paper-2 text-ink",
+                    m.role === "assistant" && !m.content && "text-ink-mute italic"
                   )}
                 >
-                  {m.content}
+                  {m.content || (loading ? "..." : "")}
                 </div>
               </li>
             ))}
-            {loading && (
+            {loading && messages[messages.length - 1]?.role !== "assistant" && (
               <li>
                 <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute mb-1">도원 AI</p>
                 <p className="font-serif-ko text-[15px] text-ink-mute italic">정리 중입니다...</p>
@@ -162,7 +320,7 @@ export function IntakeChat() {
             )}
           </ul>
 
-          {messages.length === 1 && (
+          {messages.length === 1 && !resumeOffer && (
             <div className="px-4 lg:px-6 pb-4">
               <p className="label-mono mb-2">예시</p>
               <ul className="space-y-2">
@@ -191,7 +349,11 @@ export function IntakeChat() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={state.ready_for_summary ? "추가로 알려주실 내용이 있으면 입력 (또는 오른쪽 '정리해서 확인하기')" : "편하게 말씀해 주세요..."}
+              placeholder={
+                state.ready_for_summary
+                  ? "추가로 알려주실 내용이 있으면 입력 (또는 오른쪽 '정리해서 확인하기')"
+                  : "편하게 말씀해 주세요..."
+              }
               className="flex-1 px-4 py-3 bg-paper border border-paper-3 rounded-sm font-serif-ko text-[15px] text-ink focus:outline-none focus:border-ink"
             />
             <button
