@@ -6,8 +6,33 @@ import { getLawyerBySlug } from "@/lib/data/lawyers";
 
 export const metadata = {
   title: "의료분쟁지원센터",
-  description: "의무기록 분석 → 의학적 검토 → 법률 검토를 한 곳에서. 의사 자격 변호사가 직접 수행합니다.",
+  description:
+    "진료기록 분석 → 보험금 지급 적정성 판단 → 의료과실 사고 분석 → 소송 수행. 의사 자격 변호사가 직접 수행합니다.",
 };
+
+/** Aligned with the real dowonlaw.com center page (4 core functions). */
+const coreFunctions = [
+  {
+    no: "01",
+    title: "진료기록 분석",
+    body: "의무기록 사본의 의학적 검증 — 진단·치료·시술 적정성, 수정 흔적·시간차·기록 일관성 분석.",
+  },
+  {
+    no: "02",
+    title: "보험금 지급 적정성 판단",
+    body: "보험사·피보험자 양측 자문. 진단 확정 시점, 약관 보장 범위 적용, 면책 사유 검토.",
+  },
+  {
+    no: "03",
+    title: "의료과실 사고 분석",
+    body: "진료 가이드라인(대한의학회 등) 매핑, 인과관계·설명의무 위반 입증 자료 정리.",
+  },
+  {
+    no: "04",
+    title: "의료분쟁 소송 수행",
+    body: "민사 손해배상, 형사 업무상과실, 행정 처분 대응까지 한 변호사가 일관 진행.",
+  },
+];
 
 const whyDistinct = [
   {
@@ -49,24 +74,46 @@ export default function MedicalCenterPage() {
           <p className="mt-3 font-serif-ko text-h2 text-ink">의료분쟁지원센터</p>
           <p className="mt-10 max-w-[36em] font-serif-ko text-h3 text-ink-soft leading-base">
             의료분쟁은 ‘무엇이 잘못됐는가’와 ‘그것이 법적으로 어떻게 평가되는가’가 동시에
-            다뤄져야 하는 영역입니다. 도원은 의사 자격을 보유한 변호사가 의무기록 검토부터
-            법률 판단까지 한 사람이 수행합니다.
+            다뤄져야 하는 영역입니다. 도원은 <strong className="text-ink">의사 자격을 보유한
+            변호사</strong>가 의무기록 검토부터 법률 판단까지 한 사람이 수행합니다.
           </p>
           <div className="mt-10 flex flex-wrap gap-3">
             <Button href="/contact/medical" variant="primary" size="lg">의료분쟁 상담 신청</Button>
-            <Button href="/people/lawyers" variant="secondary" size="lg">담당 변호사 보기</Button>
+            <Button href="/people/lawyers/yoon-eun-hee" variant="secondary" size="lg">
+              담당 변호사 프로필
+            </Button>
           </div>
         </Container>
       </section>
 
-      {/* Featured lawyer */}
+      {/* 4 core functions — directly mirrors real site */}
       <section className="section-y bg-paper-2">
         <Container size="wide">
-          <Eyebrow index={2}>FEATURED · 담당 변호사</Eyebrow>
+          <Eyebrow index={2}>CORE FUNCTIONS · 핵심 기능 4가지</Eyebrow>
+          <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">
+            진료기록 분석부터 소송 수행까지
+          </h2>
+
+          <ul className="mt-12 grid gap-px bg-paper-3 border border-paper-3 md:grid-cols-2">
+            {coreFunctions.map((f) => (
+              <li key={f.no} className="bg-paper p-8 lg:p-10">
+                <span className="label-mono text-gold">{f.no}</span>
+                <h3 className="mt-5 font-serif-ko text-h3 font-semibold text-ink">{f.title}</h3>
+                <p className="mt-4 font-serif-ko text-body-lg text-ink-soft leading-base">{f.body}</p>
+              </li>
+            ))}
+          </ul>
+        </Container>
+      </section>
+
+      {/* Featured lawyer */}
+      <section className="section-y">
+        <Container size="wide">
+          <Eyebrow index={3}>FEATURED · 담당 변호사</Eyebrow>
           <div className="mt-8 grid gap-10 lg:grid-cols-12 lg:items-end">
             <div className="lg:col-span-7">
               <p className="font-mono text-[11px] uppercase tracking-label text-gold">
-                변호사 · 의사
+                변호사 · 의사 (비상임)
               </p>
               <h2 className="mt-3 font-display italic text-[clamp(48px,7vw,80px)] text-ink leading-tight">
                 Yoon Eun-Hee
@@ -91,7 +138,11 @@ export default function MedicalCenterPage() {
                 {(() => {
                   const yoon = getLawyerBySlug("yoon-eun-hee");
                   return yoon ? (
-                    <LawyerPhoto lawyer={yoon} grayscaleOnHover={false} sizes="(max-width: 1024px) 100vw, 40vw" />
+                    <LawyerPhoto
+                      lawyer={yoon}
+                      grayscaleOnHover={false}
+                      sizes="(max-width: 1024px) 100vw, 40vw"
+                    />
                   ) : null;
                 })()}
               </div>
@@ -101,10 +152,12 @@ export default function MedicalCenterPage() {
       </section>
 
       {/* Why distinct */}
-      <section className="section-y">
+      <section className="section-y bg-paper-2">
         <Container size="wide">
-          <Eyebrow index={3}>WHY DISTINCT</Eyebrow>
-          <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">의료분쟁에서 도원이 가지는 차이</h2>
+          <Eyebrow index={4}>WHY DISTINCT</Eyebrow>
+          <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">
+            의료분쟁에서 도원이 가지는 차이
+          </h2>
 
           <ul className="mt-12 grid gap-px bg-paper-3 border border-paper-3 md:grid-cols-3">
             {whyDistinct.map((s) => (
@@ -119,10 +172,12 @@ export default function MedicalCenterPage() {
       </section>
 
       {/* Process */}
-      <section className="section-y bg-paper-2">
+      <section className="section-y">
         <Container size="wide">
-          <Eyebrow index={4}>PROCESS</Eyebrow>
-          <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">의무기록 → 소송 프로세스</h2>
+          <Eyebrow index={5}>PROCESS</Eyebrow>
+          <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">
+            의무기록 → 소송 프로세스
+          </h2>
 
           <ol className="mt-12 space-y-px bg-paper-3 border border-paper-3">
             {process.map((p, i) => (
@@ -138,7 +193,7 @@ export default function MedicalCenterPage() {
       </section>
 
       {/* CTA */}
-      <section className="section-y">
+      <section className="section-y bg-paper-2">
         <Container size="base" className="text-center">
           <Eyebrow>GET STARTED</Eyebrow>
           <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">의료분쟁 상담 신청</h2>

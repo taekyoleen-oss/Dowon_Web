@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui";
 import { Container } from "@/components/layout/container";
 
+const axes = ["송무", "의료", "SIU", "구상"];
+
 export function Hero() {
   const heroText = "Dowon Law";
 
@@ -21,7 +23,7 @@ export function Hero() {
                   className="inline-block animate-letter-fade-in"
                   style={{ animationDelay: `${i * 60}ms` }}
                 >
-                  {ch === " " ? " " : ch}
+                  {ch === " " ? " " : ch}
                 </span>
               ))}
             </h1>
@@ -39,23 +41,34 @@ export function Hero() {
               className="font-serif-ko text-h3 text-ink-soft leading-base animate-fade-up"
               style={{ animationDelay: "900ms" }}
             >
-              조사 <span aria-hidden className="text-gold mx-1">→</span>
-              소송 <span aria-hidden className="text-gold mx-1">→</span>
-              구상 <span aria-hidden className="text-gold mx-1">→</span>
-              추심,
+              송무 · 의료 · SIU · 구상,
               <br />
-              한 팀으로 끝냅니다.
+              <span className="text-ink font-semibold">한 팀에서 동시에.</span>
             </p>
 
             <div
-              className="mt-10 flex flex-wrap gap-3 animate-fade-up"
+              className="mt-6 flex flex-wrap gap-1.5 animate-fade-up"
+              style={{ animationDelay: "1000ms" }}
+            >
+              {axes.map((axis) => (
+                <span
+                  key={axis}
+                  className="inline-flex items-center px-2.5 py-1 border border-paper-3 rounded-pill font-mono text-[11px] uppercase tracking-label text-ink-soft"
+                >
+                  {axis}
+                </span>
+              ))}
+            </div>
+
+            <div
+              className="mt-8 flex flex-wrap gap-3 animate-fade-up"
               style={{ animationDelay: "1100ms" }}
             >
-              <Button href="/contact/personal" variant="primary" size="lg">
-                상담 신청
+              <Button href="/tools/intake" variant="primary" size="lg">
+                AI와 상담 정리하기
               </Button>
               <Button href="/about/capability" variant="secondary" size="lg">
-                통합 모델 보기
+                핵심역량 보기
               </Button>
             </div>
           </div>

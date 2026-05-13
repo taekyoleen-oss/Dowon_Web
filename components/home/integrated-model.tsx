@@ -6,88 +6,95 @@ import { cn } from "@/lib/utils";
 import { Container } from "@/components/layout/container";
 import { SectionHeader } from "@/components/ui";
 
-const stages = [
+/**
+ * 4 axes that run in parallel, mirroring the real dowonlaw.com positioning:
+ * "조사·자문·민/형사 소송·채권 추심을 동시 진행".
+ */
+const axes = [
   {
-    id: "investigate",
+    id: "litigation",
     no: "01",
-    label: "조사",
-    en: "Investigate",
-    desc: "민간조사센터의 전직 수사관·조사관 인력이 사고 경위, 위장·보험사기, 인적사항을 추적합니다.",
+    label: "송무",
+    en: "Litigation",
+    desc: "보험·의료·구상·형사 5대 영역의 1심·항소·상고를 단일 변호사단이 일관 수행합니다.",
     detail: [
-      "보험사기 의심 사건 1차 조사",
-      "위장사고·자해사고 정황 정밀 분석",
-      "행방·재산 추적 (구상 사전 단계)",
-    ],
-    href: "/centers/investigation",
-  },
-  {
-    id: "litigate",
-    no: "02",
-    label: "소송",
-    en: "Litigate",
-    desc: "조사 결과를 그대로 소송에 연결합니다. 별도 외주 없이 한 팀이 일관된 전략으로 끌어갑니다.",
-    detail: [
-      "보험 분쟁 5대 영역 직접 수행",
-      "의료분쟁: 의사 자격 변호사 동시 검토",
-      "1심·항소·상고 단일 팀 유지",
+      "보험금 청구·면책 분쟁",
+      "손해배상·합의 절충",
+      "형사 동반 사건",
     ],
     href: "/practice",
   },
   {
-    id: "subrogate",
-    no: "03",
-    label: "구상",
-    en: "Subrogate",
-    desc: "판결 이후 구상권 확보·고액보상 합의·절충까지, 동일 팀이 책임 범위를 확장합니다.",
+    id: "medical",
+    no: "02",
+    label: "의료",
+    en: "Medical",
+    desc: "의사 자격 변호사가 진료기록 의학적 검토부터 법률 판단까지 한 사람이 수행합니다.",
     detail: [
-      "구상 가능성 사전 진단",
-      "합의 절충 (피해자/가해자 양측)",
-      "기성 판결 기반 구상 회수",
+      "진료기록 분석",
+      "보험금 지급 적정성 판단",
+      "의료과실 사고 분석",
     ],
-    href: "/practice/subrogation",
+    href: "/centers/medical",
   },
   {
-    id: "recover",
-    no: "04",
-    label: "추심",
-    en: "Recover",
-    desc: "도원 채권회수팀이 실제 금전 회수까지 마무리합니다. 판결문이 곧 회수는 아닙니다.",
+    id: "siu",
+    no: "03",
+    label: "SIU",
+    en: "Investigation",
+    desc: "수사기관 출신 인력이 사실조사·증거 확보부터 소송 전략까지 직결합니다.",
     detail: [
-      "재산조회·은닉재산 추적",
-      "강제집행·압류·추심 명령",
-      "회수 진행 상황 의뢰인 리포트",
+      "내부자 비리·중대범죄 조사",
+      "디지털 포렌식",
+      "기업 실사·빅데이터 분석",
+    ],
+    href: "/centers/investigation",
+  },
+  {
+    id: "recovery",
+    no: "04",
+    label: "구상",
+    en: "Recovery",
+    desc: "판결문 확보 이후 구상권 행사·합의 절충·실제 회수까지 동일 팀이 끌어갑니다.",
+    detail: [
+      "구상권 행사·책임 배분",
+      "고액보상 합의 절충",
+      "재산조회·강제집행·추심",
     ],
     href: "/people/recovery",
   },
 ];
 
 export function IntegratedModel() {
-  const [active, setActive] = React.useState<string>("investigate");
-  const current = stages.find((s) => s.id === active) ?? stages[0];
+  const [active, setActive] = React.useState<string>("litigation");
+  const current = axes.find((s) => s.id === active) ?? axes[0];
 
   return (
     <section className="section-y bg-paper-2">
       <Container size="wide">
         <SectionHeader
           index={2}
-          eyebrow="INTEGRATED MODEL"
-          display="One Team. End to End."
-          heading="조사부터 추심까지, 도원 한 팀에서"
-          lead="대부분의 로펌은 ‘소송 전문’에 그칩니다. 도원은 부설 민간조사·의료지원센터와 채권회수팀까지 보유합니다. 외주 4곳을 거치는 동안 잃는 시간과 정보가 없습니다."
+          eyebrow="INTEGRATED MODEL · 핵심역량"
+          display="Four axes. One team."
+          heading="송무 · 의료 · SIU · 구상, 동시 병렬로"
+          lead="대부분의 로펌은 ‘소송 전문’에 그칩니다. 도원은 보험·의료·민간조사·구상 분야의 변호사와 전문 인력이 한 팀을 이루어, 같은 사건에 대해 4축이 동시에 움직입니다."
         />
 
         <div className="mt-14 grid gap-10 lg:grid-cols-12">
-          {/* Stage rail */}
+          {/* Axis chips — clearly labeled as parallel, not sequential */}
           <div className="lg:col-span-7">
-            <ol className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              {stages.map((stage, i) => {
-                const isActive = stage.id === active;
+            <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute mb-4">
+              ↳ 4 axes run in parallel
+            </p>
+            <ol className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {axes.map((axis) => {
+                const isActive = axis.id === active;
                 return (
-                  <li key={stage.id}>
+                  <li key={axis.id}>
                     <button
                       type="button"
-                      onClick={() => setActive(stage.id)}
-                      onMouseEnter={() => setActive(stage.id)}
+                      onClick={() => setActive(axis.id)}
+                      onMouseEnter={() => setActive(axis.id)}
                       className={cn(
                         "w-full text-left p-5 rounded-md border transition-all duration-base",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
@@ -98,27 +105,51 @@ export function IntegratedModel() {
                       aria-pressed={isActive}
                     >
                       <div className="flex items-baseline justify-between">
-                        <span className="label-mono text-gold">{stage.no}</span>
-                        <span className="font-mono text-[11px] uppercase tracking-label text-ink-mute">
-                          {stage.en}
+                        <span className="label-mono text-gold">{axis.no}</span>
+                        <span className="font-mono text-[10px] uppercase tracking-label text-ink-mute">
+                          {axis.en}
                         </span>
                       </div>
                       <p className="mt-3 font-serif-ko text-h3 font-semibold text-ink">
-                        {stage.label}
+                        {axis.label}
                       </p>
-                      {/* connector arrow */}
-                      {i < stages.length - 1 && (
-                        <span
-                          aria-hidden
-                          className="hidden md:block absolute"
-                          style={{ pointerEvents: "none" }}
-                        />
-                      )}
                     </button>
                   </li>
                 );
               })}
             </ol>
+
+            {/* Visual — 4 concurrent rails (replaces the old →→→ flow) */}
+            <div
+              aria-hidden
+              className="mt-8 hidden lg:block rounded-md border border-paper-3 p-5 bg-paper"
+            >
+              <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute mb-3">
+                — A single case, four simultaneous workstreams
+              </p>
+              <ul className="space-y-2">
+                {axes.map((axis) => (
+                  <li key={axis.id} className="flex items-center gap-3">
+                    <span className="font-mono text-[10px] uppercase tracking-label text-ink-mute w-12">
+                      {axis.label}
+                    </span>
+                    <span
+                      className={cn(
+                        "h-1.5 flex-1 rounded-pill bg-paper-3 overflow-hidden",
+                        active === axis.id && "bg-paper-2"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "block h-full transition-all duration-slow ease-out-curve",
+                          active === axis.id ? "w-full bg-gold" : "w-[35%] bg-gold-deep/40"
+                        )}
+                      />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
 
           {/* Detail panel */}
@@ -129,6 +160,9 @@ export function IntegratedModel() {
                 <p className="font-serif-ko text-h2 font-semibold text-ink">
                   {current.label}
                 </p>
+                <span className="ml-auto font-mono text-[10px] uppercase tracking-label text-ink-mute">
+                  {current.en}
+                </span>
               </div>
               <p className="mt-4 font-serif-ko text-body-lg text-ink-soft leading-base">
                 {current.desc}

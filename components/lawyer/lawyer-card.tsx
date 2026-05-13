@@ -13,12 +13,27 @@ export function LawyerCard({ lawyer, featured }: { lawyer: Lawyer; featured?: bo
     <Link
       href={`/people/lawyers/${lawyer.slug}`}
       className={cn(
-        "group block bg-paper border border-paper-3 rounded-md overflow-hidden",
+        "group relative block bg-paper border rounded-md overflow-hidden",
         "transition-all duration-base ease-out-curve",
-        "hover:border-ink hover:shadow-paper",
+        // Special qualifications get a gold border to draw the eye in the
+        // grid (윤은희 변호사 의사 자격 강조).
+        showSpecial
+          ? "border-gold/60 hover:border-gold-deep"
+          : "border-paper-3 hover:border-ink",
+        "hover:shadow-paper hover:-translate-y-0.5",
         featured && "lg:col-span-2"
       )}
     >
+      {/* Top decorative gold line — slides in from left on hover, gives the
+          card the "section header" feel from the design system. */}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute left-0 top-0 h-[2px] bg-gold transition-[width] duration-base",
+          showSpecial ? "w-[40px]" : "w-0 group-hover:w-[40px]"
+        )}
+      />
+
       <div className="relative aspect-[4/5] bg-paper-3 overflow-hidden">
         <LawyerPhoto lawyer={lawyer} />
         {showSpecial && (

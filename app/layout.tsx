@@ -3,6 +3,7 @@ import "./globals.css";
 import { cormorant, notoSerifKr, pretendard, jetbrainsMono } from "./fonts";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { MobileFloatingCta } from "@/components/layout/mobile-floating-cta";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
@@ -51,10 +52,11 @@ export default function RootLayout({
       className={`${cormorant.variable} ${notoSerifKr.variable} ${pretendard.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
-      <body className="min-h-screen bg-paper text-ink antialiased">
+      <body className="min-h-screen bg-paper text-ink antialiased pb-[60px] lg:pb-0">
         <Header />
         <main id="main">{children}</main>
         <Footer />
+        <MobileFloatingCta />
       </body>
     </html>
   );
