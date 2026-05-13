@@ -41,10 +41,20 @@ export function IntakeChat() {
   const [loading, setLoading] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [submitted, setSubmitted] = React.useState<{ ok: boolean; message: string } | null>(null);
-  const endRef = React.useRef<HTMLDivElement | null>(null);
+  const listRef = React.useRef<HTMLUListElement | null>(null);
+  const isFirstRender = React.useRef(true);
 
+  // Scroll the chat container only — never the page. scrollIntoView on the
+  // sentinel div was scrolling the surrounding page so the entire chat moved
+  // out of the viewport on every new message.
   React.useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = listRef.current;
+    if (!el) return;
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
   const send = async (text: string) => {
@@ -122,7 +132,10 @@ export function IntakeChat() {
             <p className="font-mono text-[11px] uppercase tracking-label text-ink">AI Intake · 사건 정보 정리</p>
           </div>
 
-          <ul className="flex-1 px-4 lg:px-6 py-6 space-y-5 max-h-[60vh] overflow-y-auto">
+          <ul
+            ref={listRef}
+            className="flex-1 px-4 lg:px-6 py-6 space-y-5 max-h-[60vh] overflow-y-auto overscroll-contain"
+          >
             {messages.map((m, i) => (
               <li
                 key={i}
@@ -147,7 +160,6 @@ export function IntakeChat() {
                 <p className="font-serif-ko text-[15px] text-ink-mute italic">정리 중입니다...</p>
               </li>
             )}
-            <div ref={endRef} />
           </ul>
 
           {messages.length === 1 && (
