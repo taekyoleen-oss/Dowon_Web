@@ -49,10 +49,19 @@ export function extractJson<T = unknown>(raw: string): T {
   throw new Error("Could not parse JSON from LLM response");
 }
 
-/** Concatenate text content blocks from an Anthropic response. */
-export function textOf(content: Array<{ type: string } & Record<string, unknown>>): string {
+/** Concatenate text content blocks from an Anthropic response.
+ *
+ * Accepts the Anthropic SDK's `ContentBlock` union (TextBlock | ToolUseBlock |
+ * etc.). Uses an `in` check rather than a type predicate so it remains
+ * compatible across SDK versions that change ContentBlock shape.
+ */
+export function textOf(content: ReadonlyArray<unknown>): string {
   return content
-    .filter((c) => c.type === "text")
-    .map((c) => (typeof c.text === "string" ? c.text : ""))
+    .map((c) => {
+      if (!c || typeof c !== "object") return "";
+      const block = c as { type?: string; text?: unknown };
+      if (block.type === "text" && typeof block.text === "string") return block.text;
+      return "";
+    })
     .join("");
 }

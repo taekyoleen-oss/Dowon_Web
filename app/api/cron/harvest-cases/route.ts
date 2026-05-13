@@ -77,7 +77,7 @@ export async function POST(req: Request) {
             system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
             messages: [{ role: "user", content: raw.raw_text }],
           });
-          const text = textOf(response.content as Array<{ type: string } & Record<string, unknown>>);
+          const text = textOf(response.content);
           const parsed = extractJson<{
             title: string;
             issue: string;

@@ -58,9 +58,11 @@ async function processTable(
 ) {
   let query = supabase.from(table).select(selectCols).eq("is_published", true);
   if (!force) query = query.is("embedding", null);
-  const { data: rows, error } = await query;
+  const { data, error } = await query;
   if (error) throw new Error(`${table} fetch: ${error.message}`);
-  if (!rows || rows.length === 0) {
+  // Dynamic .select(string) returns a loose type; coerce explicitly.
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  if (rows.length === 0) {
     console.log(`[embed] ${table}: nothing to do`);
     return;
   }
@@ -75,9 +77,9 @@ async function processTable(
         .update({ embedding: vectors[i] as unknown as string })
         .eq("id", batch[i].id as string);
       if (error) {
-        console.error(`[embed] ${table} update ${batch[i].slug}:`, error.message);
+        console.error(`[embed] ${table} update ${String(batch[i].slug)}:`, error.message);
       } else {
-        process.stdout.write(`  ✓ ${batch[i].slug}\n`);
+        process.stdout.write(`  ✓ ${String(batch[i].slug)}\n`);
       }
     }
   }

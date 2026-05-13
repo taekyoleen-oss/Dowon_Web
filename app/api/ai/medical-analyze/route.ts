@@ -129,8 +129,8 @@ export async function POST(req: Request) {
           },
         ],
       });
-      const text = textOf(response.content as Array<{ type: string } & Record<string, unknown>>);
-      const parsed = extractJson(text);
+      const text = textOf(response.content);
+      const parsed = extractJson<Record<string, unknown>>(text);
       const tokensUsed =
         (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
       return { output: parsed, tokensUsed };

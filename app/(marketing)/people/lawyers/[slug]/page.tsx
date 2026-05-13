@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Container } from "@/components/layout/container";
 import { Eyebrow, Button, Tag } from "@/components/ui";
+import { LawyerPhoto } from "@/components/lawyer/lawyer-photo";
 import {
   lawyers,
   getLawyerBySlug,
@@ -40,18 +41,14 @@ export default function LawyerProfilePage({ params }: { params: { slug: string }
           <div className="grid gap-10 lg:grid-cols-12">
             <div className="lg:col-span-5">
               <div className="aspect-[4/5] bg-paper-2 border border-paper-3 rounded-md overflow-hidden relative">
-                {lawyer.photoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={lawyer.photoUrl} alt={lawyer.nameKo} className="absolute inset-0 h-full w-full object-cover" />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="font-display italic text-[clamp(64px,10vw,128px)] text-ink-mute">
-                      {lawyer.nameEn.split(",")[0]}
-                    </span>
-                  </div>
-                )}
+                <LawyerPhoto
+                  lawyer={lawyer}
+                  priority
+                  grayscaleOnHover={false}
+                  sizes="(max-width: 1024px) 100vw, 40vw"
+                />
                 {showSpecial && (
-                  <div className="absolute top-5 left-5">
+                  <div className="absolute top-5 left-5 z-10">
                     <Tag variant="accent">{lawyer.specialQualifications!.join(" · ")}</Tag>
                   </div>
                 )}

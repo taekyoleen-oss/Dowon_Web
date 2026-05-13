@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Container } from "@/components/layout/container";
 import { Eyebrow, Button } from "@/components/ui";
+import { LawyerPhoto } from "@/components/lawyer/lawyer-photo";
+import { getLawyerBySlug } from "@/lib/data/lawyers";
 
 export const metadata = {
   title: "의료분쟁지원센터",
@@ -77,7 +79,7 @@ export default function MedicalCenterPage() {
               </p>
               <div className="mt-8">
                 <Link
-                  href="/people/lawyers"
+                  href="/people/lawyers/yoon-eun-hee"
                   className="inline-flex items-center font-serif-ko text-[15px] text-ink font-semibold border-b border-ink pb-1 hover:text-gold-deep hover:border-gold-deep transition-colors"
                 >
                   프로필 자세히 보기 →
@@ -85,10 +87,13 @@ export default function MedicalCenterPage() {
               </div>
             </div>
             <div className="lg:col-span-5">
-              <div className="aspect-[4/5] bg-paper-3 border border-paper-3 rounded-md flex items-center justify-center">
-                <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute text-center px-6">
-                  Lawyer photo placeholder
-                </p>
+              <div className="aspect-[4/5] bg-paper-3 border border-paper-3 rounded-md overflow-hidden relative">
+                {(() => {
+                  const yoon = getLawyerBySlug("yoon-eun-hee");
+                  return yoon ? (
+                    <LawyerPhoto lawyer={yoon} grayscaleOnHover={false} sizes="(max-width: 1024px) 100vw, 40vw" />
+                  ) : null;
+                })()}
               </div>
             </div>
           </div>

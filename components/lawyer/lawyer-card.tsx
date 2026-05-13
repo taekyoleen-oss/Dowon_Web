@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Lawyer } from "@/lib/data/lawyers";
 import { practiceAreaLabels } from "@/lib/data/lawyers";
 import { Tag } from "@/components/ui";
+import { LawyerPhoto } from "./lawyer-photo";
 import { cn } from "@/lib/utils";
 
 export function LawyerCard({ lawyer, featured }: { lawyer: Lawyer; featured?: boolean }) {
@@ -19,22 +20,9 @@ export function LawyerCard({ lawyer, featured }: { lawyer: Lawyer; featured?: bo
       )}
     >
       <div className="relative aspect-[4/5] bg-paper-3 overflow-hidden">
-        {lawyer.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={lawyer.photoUrl}
-            alt={`${lawyer.nameKo} ${lawyer.role}`}
-            className="absolute inset-0 h-full w-full object-cover grayscale group-hover:grayscale-0 transition-all duration-slow"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="font-display italic text-[clamp(48px,6vw,72px)] text-ink-mute">
-              {lawyer.nameEn.split(",")[0]}
-            </span>
-          </div>
-        )}
+        <LawyerPhoto lawyer={lawyer} />
         {showSpecial && (
-          <div className="absolute top-4 left-4">
+          <div className="absolute top-4 left-4 z-10">
             <Tag variant="accent">{lawyer.specialQualifications!.join(" · ")}</Tag>
           </div>
         )}
