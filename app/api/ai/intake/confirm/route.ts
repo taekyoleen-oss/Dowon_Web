@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getServerSupabase, hasSupabaseConfig } from "@/lib/supabase/server";
 import { notifyConsultation } from "@/lib/notifications";
 import { summarizeForLawyer, type IntakeState } from "@/lib/ai/intake-slots";
+import { checkRateLimit } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,9 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const limited = await checkRateLimit(req, "submit");
+  if (limited) return limited;
+
   let body: z.infer<typeof bodySchema>;
   try {
     body = bodySchema.parse(await req.json());

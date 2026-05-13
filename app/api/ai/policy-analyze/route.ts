@@ -3,6 +3,7 @@ import { getCurrentAdminEmail } from "@/lib/admin/auth";
 import { getAnthropic, hasAnthropicConfig, CLAUDE_MODEL, SYSTEM_FOOTER } from "@/lib/ai/anthropic";
 import { withAudit } from "@/lib/ai/audit";
 import { extractJson, textOf } from "@/lib/ai/json";
+import { checkRateLimit } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -40,6 +41,11 @@ export async function POST(req: Request) {
       { status: 401 }
     );
   }
+
+  // Heavy-tier limit keyed by admin email — each user keeps their own quota
+  // regardless of corporate IP sharing.
+  const limited = await checkRateLimit(req, "heavy", email);
+  if (limited) return limited;
 
   let formData: FormData;
   try {

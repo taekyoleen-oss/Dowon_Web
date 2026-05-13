@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getAnthropic, hasAnthropicConfig, CLAUDE_MODEL, SYSTEM_FOOTER } from "@/lib/ai/anthropic";
 import { withAudit } from "@/lib/ai/audit";
 import { extractJson, textOf } from "@/lib/ai/json";
+import { checkRateLimit } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,9 @@ const SYSTEM_PROMPT = `당신은 보험사 실무진을 돕는 구상 가능성 
 ${SYSTEM_FOOTER}`;
 
 export async function POST(req: Request) {
+  const limited = await checkRateLimit(req, "advice");
+  if (limited) return limited;
+
   let body: z.infer<typeof bodySchema>;
   try {
     body = bodySchema.parse(await req.json());

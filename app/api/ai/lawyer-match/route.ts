@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { lawyers, practiceAreaLabels, type PracticeAreaCode } from "@/lib/data/lawyers";
 import { withAudit } from "@/lib/ai/audit";
+import { checkRateLimit } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,9 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const limited = await checkRateLimit(req, "search");
+  if (limited) return limited;
+
   let body: z.infer<typeof bodySchema>;
   try {
     body = bodySchema.parse(await req.json());

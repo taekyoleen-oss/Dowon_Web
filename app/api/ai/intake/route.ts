@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAnthropic, hasAnthropicConfig, CLAUDE_MODEL, SYSTEM_FOOTER } from "@/lib/ai/anthropic";
 import { recordAudit } from "@/lib/ai/audit";
+import { checkRateLimit } from "@/lib/ai/rate-limit";
 import { getServerSupabase, hasSupabaseConfig } from "@/lib/supabase/server";
 import {
   ndjsonFromAnthropicStream,
@@ -93,6 +94,9 @@ function newSessionId() {
 }
 
 export async function POST(req: Request) {
+  const limited = await checkRateLimit(req, "intake-long");
+  if (limited) return limited;
+
   let body: z.infer<typeof bodySchema>;
   try {
     body = bodySchema.parse(await req.json());

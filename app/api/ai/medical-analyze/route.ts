@@ -3,6 +3,7 @@ import { getCurrentAdminEmail } from "@/lib/admin/auth";
 import { getAnthropic, hasAnthropicConfig, CLAUDE_MODEL, SYSTEM_FOOTER } from "@/lib/ai/anthropic";
 import { withAudit } from "@/lib/ai/audit";
 import { extractJson, textOf } from "@/lib/ai/json";
+import { checkRateLimit } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -44,6 +45,9 @@ export async function POST(req: Request) {
   if (!email) {
     return NextResponse.json({ error: "Unauthorized — admin only." }, { status: 401 });
   }
+
+  const limited = await checkRateLimit(req, "heavy", email);
+  if (limited) return limited;
 
   if (process.env.DOWON_DISABLE_EXTERNAL_AI === "true") {
     return NextResponse.json(

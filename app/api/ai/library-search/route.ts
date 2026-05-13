@@ -6,6 +6,7 @@ import { getServerSupabase, hasSupabaseConfig } from "@/lib/supabase/server";
 import { embed, hasOpenAIConfig } from "@/lib/ai/openai";
 import { getAnthropic, hasAnthropicConfig, CLAUDE_MODEL } from "@/lib/ai/anthropic";
 import { withAudit } from "@/lib/ai/audit";
+import { checkRateLimit } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -46,6 +47,9 @@ function keywordScore(item: (typeof libraryItems)[number], q: string) {
 }
 
 export async function POST(req: Request) {
+  const limited = await checkRateLimit(req, "search");
+  if (limited) return limited;
+
   let body: z.infer<typeof bodySchema>;
   try {
     body = bodySchema.parse(await req.json());

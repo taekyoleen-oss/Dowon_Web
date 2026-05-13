@@ -25,6 +25,13 @@
 | `NOTIFY_EMAIL` | 권장 | 직접 입력 | 알림 받을 이메일 주소 | — |
 | `NOTIFY_FROM` | 권장 | 직접 입력 | Resend 발송자 표시 이름 | — |
 | `DOWON_DISABLE_EXTERNAL_AI` | 권장 (의료) | 직접 입력 (`true`/`false`) | 의무기록 분석 외부 API 호출 차단 옵션 | — |
+| `UPSTASH_REDIS_REST_URL` | 권장 (운영) | console.upstash.com | AI 라우트에 rate limit 없음 | 무료 10K cmd/일 |
+| `UPSTASH_REDIS_REST_TOKEN` | 권장 (운영) | 동일 | 동일 | — |
+| `NEXT_PUBLIC_SENTRY_DSN` | 권장 (운영) | sentry.io | 브라우저 에러 모니터링 없음 | 무료 5K events/월 |
+| `SENTRY_DSN` | 권장 (운영) | 동일 (브라우저용과 같은 값) | 서버 에러 모니터링 없음 | — |
+| `SENTRY_ORG` | 빌드 시 (선택) | Sentry 조직 slug | 소스맵 업로드 안 됨 | — |
+| `SENTRY_PROJECT` | 빌드 시 (선택) | Sentry 프로젝트 slug | 동일 | — |
+| `SENTRY_AUTH_TOKEN` | 빌드 시 (선택) | Sentry → User Auth Tokens | 동일 | — |
 | `SANITY_PROJECT_ID` | Phase 4 (선택) | sanity.io | CMS 없음 (코드 직접 편집) | 무료 |
 | `SANITY_DATASET` | Phase 4 (선택) | 동일 | 동일 | — |
 | `POSTHOG_KEY` | Phase 4 (선택) | posthog.com | KPI 추적 안 됨 | 무료 1M events/월 |
@@ -169,7 +176,87 @@ SANITY_DATASET=production
 
 ---
 
-### 3-5. `POSTHOG_KEY` (Phase 4 · 분석)
+### 3-5. Upstash Redis (Rate limiting · 권장)
+
+#### 무엇을 위한 키
+모든 AI 라우트에 IP/사용자별 분당·시간당 호출 한도를 강제합니다.
+설정 시 다음 한도가 자동 적용됩니다 (단위: 요청/IP):
+
+| 라우트 | 한도 | 비고 |
+|---|---|---|
+| `/api/ai/triage` | 20/분 | 챗봇 (interactive) |
+| `/api/ai/intake` | 30/분 | 챗봇 (긴 대화 허용) |
+| `/api/ai/intake/confirm` | 5/분 | 최종 제출 |
+| `/api/ai/library-search` | 30/분 | 검색 |
+| `/api/ai/lawyer-match` | 30/분 | 매칭 |
+| `/api/ai/subrogation-check` | 10/분 | 진단 (비용 ↑) |
+| `/api/ai/policy-analyze` | 5/시간 (admin email당) | PDF 분석 |
+| `/api/ai/medical-analyze` | 5/시간 (admin email당) | PDF 분석 |
+
+한도 초과 시 `HTTP 429 + Retry-After 헤더 + 한국어 안내 메시지`.
+
+#### 발급 단계
+1. **https://console.upstash.com** 가입 (GitHub/Google)
+2. **Create Database** → Type: **Redis**
+   - Name: `dowon-ratelimit`
+   - Region: 한국에서 가장 가까운 곳 (`ap-northeast-1` 도쿄 또는 `aps1` Singapore)
+   - Plan: **Free** (10K commands/day — Rate limit용으로 충분)
+3. 생성된 DB 페이지 → **REST API** 탭
+4. `UPSTASH_REDIS_REST_URL` 과 `UPSTASH_REDIS_REST_TOKEN` 복사
+
+#### 어디에
+- 로컬 `.env.local`의 `UPSTASH_REDIS_REST_URL=`, `UPSTASH_REDIS_REST_TOKEN=` 뒤
+- Vercel Environment Variables 동일
+
+#### 비용
+무료. 일일 10,000 commands 초과 시 자동 차단 (요금 청구되지 않음). 도원 트래픽에선 일 200건 미만 예상.
+
+---
+
+### 3-6. Sentry (에러 모니터링 · 권장)
+
+#### 무엇을 위한 키
+운영 중 발생하는 JavaScript·서버·API 에러를 실시간으로 수집·알림. 
+설정 시:
+- 브라우저 에러 자동 캡처 (사용자 PII는 자동 마스킹)
+- 서버 라우트 에러 자동 캡처
+- 에러 발생한 세션의 화면 녹화 (Replay) — 텍스트는 마스킹됨
+- 슬랙/이메일 알림 가능
+
+#### 발급 단계
+1. **https://sentry.io/signup** 가입 (GitHub 추천)
+2. **Create Project**
+   - Platform: **Next.js**
+   - Alert frequency: "Alert me on every new issue"
+   - Project name: `dowon-web`
+3. 다음 페이지에서 **DSN** 복사 (https://abc...@xxx.ingest.sentry.io/1234567 형태)
+4. (선택, 소스맵 업로드용) **Settings → Auth Tokens → Create New Token**
+   - Scopes: `project:releases`, `project:write`
+   - 토큰 복사
+
+#### .env.local / Vercel 값
+```env
+NEXT_PUBLIC_SENTRY_DSN=<DSN 그대로 붙여넣기>
+SENTRY_DSN=<같은 값>
+# 아래 3개는 소스맵 업로드용 — 로컬은 비워두고 Vercel에만 설정 권장
+SENTRY_ORG=<Sentry 조직 slug, 예: dowon-law>
+SENTRY_PROJECT=dowon-web
+SENTRY_AUTH_TOKEN=<위에서 만든 토큰>
+```
+
+> **참고**: `NEXT_PUBLIC_SENTRY_DSN`은 브라우저 번들에 포함되지만 DSN 자체는 공개되어도 안전합니다 (Sentry가 origin 검사로 악용을 차단합니다).
+> `SENTRY_AUTH_TOKEN`은 절대 노출 금지 (소스맵 업로드 권한).
+
+#### 어디에
+- 로컬: `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_DSN` 만 채우면 충분 (소스맵은 로컬에서 안 만듦)
+- Vercel: 5개 모두 입력해야 빌드 시 소스맵까지 업로드됨
+
+#### 비용
+무료 5,000 events/월 + 500 replays/월. 도원 트래픽으로는 무료 한도 내.
+
+---
+
+### 3-7. `POSTHOG_KEY` (Phase 4 · 분석)
 
 #### 무엇을 위한 키
 PRD §10 KPI 추적:
@@ -236,6 +323,8 @@ NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com    # EU 리전 사용 시
 - [ ] `/contact/personal` 폼 제출 → Supabase `consultation_requests` 테이블에 row 추가 확인
 - [ ] (선택) `RESEND_API_KEY` 추가 후 폼 재제출 → 이메일 수신 확인
 - [ ] (선택) `SLACK_WEBHOOK_URL` 추가 후 폼 재제출 → Slack 알림 수신 확인
+- [ ] (운영) `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` 입력 → `/tools/triage`에서 21회 빠르게 클릭 시 21번째 호출이 429 응답인지 확인
+- [ ] (운영) `NEXT_PUBLIC_SENTRY_DSN` + `SENTRY_DSN` 입력 → Sentry → Issues 탭에서 테스트 에러 1건 수신 확인 (브라우저 콘솔: `Sentry.captureException(new Error("test"))`)
 
 ---
 
@@ -250,6 +339,8 @@ NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com    # EU 리전 사용 시
 | Vercel Cron이 401 | `CRON_SECRET` 이 Vercel Environment Variables 에 등록됐는지 확인. Vercel은 자동으로 `Authorization: Bearer <CRON_SECRET>` 헤더를 부착 |
 | 이메일이 안 옴 | (a) `RESEND_API_KEY` 비어있음 → 콘솔 로그만. (b) 도메인 미검증. (c) `NOTIFY_FROM` 도메인이 Resend 등록 도메인과 다름 |
 | Slack 알림이 안 옴 | `SLACK_WEBHOOK_URL` 의 채널이 비공개로 변경됐거나 봇이 추방됐을 가능성. Slack 앱 페이지에서 재발급 |
+| 정상 사용자도 429 받음 | (a) `UPSTASH_REDIS_REST_URL` 이 잘못된 region에 있음 → 응답 지연으로 한도 빨리 소진. (b) Vercel Function이 같은 ID에 여러 번 호출 (preview 빌드 등). Upstash 콘솔 → Data Browser → `rl:*` 키 확인 |
+| Sentry에 에러 안 옴 | (a) DSN 형식 확인 (`https://...@oXXX.ingest.sentry.io/Y`). (b) `NODE_ENV=development` 에서는 일부 에러 자동 무시 — production 빌드로 확인. (c) ad-blocker 차단 시 `tunnelRoute: "/monitoring"` 활용 (이미 설정됨) |
 
 ---
 
