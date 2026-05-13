@@ -32,11 +32,28 @@
 
 ## 사진 추가 후 할 일
 
-1. 파일을 이 폴더에 넣기 (`hong-myung-ho.jpg` 등)
-2. `lib/data/lawyers.ts`의 해당 변호사 객체에 `photoUrl` 필드 추가 — 없으면 자동으로 폴백 처리
-   - **자동 매핑 사용 시**: `photoUrl` 비워두면 `/lawyers/{slug}.jpg`를 시도하고 없으면 이니셜 placeholder
+### 옵션 A — 자동 다운로드 (도원 사이트에서 미러)
+
+`lib/data/lawyers.ts`의 11명 변호사는 이미 `photoUrl`이
+`https://www.dowonlaw.com/upload/employee/...` 로 설정되어 있습니다 (정애리나·임원균은
+도원 사이트 자체에 사진 없음). 운영(Vercel)은 image optimizer로 자동 캐싱하므로 별도
+다운로드가 없어도 사진이 표시됩니다.
+
+로컬 사본을 두고 싶다면:
+
+```bash
+npm run photos       # 11장을 public/lawyers/{slug}.png 로 저장
+```
+
+다운로드가 끝나면 `lib/data/lawyers.ts`의 각 `photoUrl`을 `/lawyers/{slug}.png` 로
+바꾸거나, 아예 필드를 지우면 됩니다. (LawyerPhoto 컴포넌트가 자동으로 그 경로를 시도)
+
+### 옵션 B — 수동 업로드
+
+1. 새 사진을 이 폴더에 `{slug}.jpg` 또는 `{slug}.png` 로 저장
+2. `lib/data/lawyers.ts`의 해당 객체에서 `photoUrl` 줄을 제거 (자동 매핑이 작동)
 3. `npm run dev` 후 `/people/lawyers` 확인
-4. 운영 배포 — `git add public/lawyers/* && git commit && git push`
+4. `git add public/lawyers/{slug}.png && git commit && git push`
 
 ## 이력·바이오 업데이트
 

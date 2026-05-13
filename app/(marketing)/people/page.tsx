@@ -33,6 +33,13 @@ const teams = [
     en: "Management",
     desc: "프로젝트·행정·고객 관리.",
   },
+  {
+    href: "/people/group",
+    no: "05",
+    title: "조직도",
+    en: "Org Chart",
+    desc: "변호사단·부설기관·운영팀이 하나의 사건에 어떻게 동시 투입되는지.",
+  },
 ];
 
 export default function PeopleIndex() {
@@ -45,7 +52,7 @@ export default function PeopleIndex() {
         </h1>
         <p className="mt-3 font-serif-ko text-h2 text-ink">도원 구성원</p>
 
-        <ul className="mt-16 grid gap-px bg-paper-3 border border-paper-3 md:grid-cols-2 lg:grid-cols-4">
+        <ul className="mt-16 grid gap-px bg-paper-3 border border-paper-3 md:grid-cols-2 lg:grid-cols-5">
           {teams.map((t) => (
             <li key={t.href} className="bg-paper">
               <Link href={t.href} className="block p-7 lg:p-8 group h-full">
