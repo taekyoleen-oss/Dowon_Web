@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { getServerSupabase, hasSupabaseConfig } from "@/lib/supabase/server";
 
 export const metadata = { title: "상담 신청 — 어드민" };
@@ -8,6 +10,7 @@ type Row = {
   status: string;
   contact_info: Record<string, unknown>;
   case_summary: string;
+  intake_session_id: string | null;
   created_at: string;
 };
 
@@ -16,7 +19,7 @@ async function getRows(): Promise<Row[]> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from("consultation_requests")
-    .select("id, persona, status, contact_info, case_summary, created_at")
+    .select("id, persona, status, contact_info, case_summary, intake_session_id, created_at")
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) {
@@ -57,6 +60,7 @@ export default async function ConsultationsAdmin() {
             <thead>
               <tr className="border-b border-paper-3">
                 <th className="text-left py-3 pr-4 font-mono text-[11px] uppercase tracking-label text-ink-mute">접수일</th>
+                <th className="text-left py-3 pr-4 font-mono text-[11px] uppercase tracking-label text-ink-mute">출처</th>
                 <th className="text-left py-3 pr-4 font-mono text-[11px] uppercase tracking-label text-ink-mute">페르소나</th>
                 <th className="text-left py-3 pr-4 font-mono text-[11px] uppercase tracking-label text-ink-mute">연락처</th>
                 <th className="text-left py-3 pr-4 font-mono text-[11px] uppercase tracking-label text-ink-mute">사건 개요</th>
@@ -64,29 +68,56 @@ export default async function ConsultationsAdmin() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-b border-paper-3 align-top">
-                  <td className="py-4 pr-4 font-mono text-[12px] text-ink-mute">
-                    {r.created_at.slice(0, 10)}
-                  </td>
-                  <td className="py-4 pr-4 font-serif-ko text-[14px] text-ink">
-                    {personaLabel[r.persona] ?? r.persona}
-                  </td>
-                  <td className="py-4 pr-4 font-serif-ko text-[14px] text-ink-soft">
-                    {String((r.contact_info as Record<string, unknown>).contactName ?? (r.contact_info as Record<string, unknown>).patientName ?? (r.contact_info as Record<string, unknown>).applicantName ?? "—")}
-                    <br />
-                    <span className="font-mono text-[11px] text-ink-mute">
-                      {String((r.contact_info as Record<string, unknown>).phone ?? "")}
-                    </span>
-                  </td>
-                  <td className="py-4 pr-4 font-serif-ko text-[14px] text-ink-soft leading-base">
-                    <span className="line-clamp-3">{r.case_summary}</span>
-                  </td>
-                  <td className="py-4 font-mono text-[11px] uppercase tracking-label text-ink">
-                    {r.status}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const contact = r.contact_info as Record<string, unknown>;
+                const name = String(
+                  contact.contactName ?? contact.patientName ?? contact.applicantName ?? "—"
+                );
+                return (
+                  <tr key={r.id} className="border-b border-paper-3 align-top hover:bg-paper-2 transition-colors">
+                    <td className="py-4 pr-4 font-mono text-[12px] text-ink-mute">
+                      <Link href={`/admin/consultations/${r.id}`} className="block">
+                        {r.created_at.slice(0, 10)}
+                      </Link>
+                    </td>
+                    <td className="py-4 pr-4">
+                      <Link href={`/admin/consultations/${r.id}`} className="block">
+                        {r.intake_session_id ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-pill bg-gold-deep text-paper font-mono text-[10px] uppercase tracking-label">
+                            <Sparkles size={10} aria-hidden /> AI INTAKE
+                          </span>
+                        ) : (
+                          <span className="font-mono text-[11px] uppercase tracking-label text-ink-mute">FORM</span>
+                        )}
+                      </Link>
+                    </td>
+                    <td className="py-4 pr-4 font-serif-ko text-[14px] text-ink">
+                      <Link href={`/admin/consultations/${r.id}`} className="block">
+                        {personaLabel[r.persona] ?? r.persona}
+                      </Link>
+                    </td>
+                    <td className="py-4 pr-4 font-serif-ko text-[14px] text-ink-soft">
+                      <Link href={`/admin/consultations/${r.id}`} className="block">
+                        {name}
+                        <br />
+                        <span className="font-mono text-[11px] text-ink-mute">
+                          {String(contact.phone ?? "")}
+                        </span>
+                      </Link>
+                    </td>
+                    <td className="py-4 pr-4 font-serif-ko text-[14px] text-ink-soft leading-base">
+                      <Link href={`/admin/consultations/${r.id}`} className="block">
+                        <span className="line-clamp-3">{r.case_summary}</span>
+                      </Link>
+                    </td>
+                    <td className="py-4 font-mono text-[11px] uppercase tracking-label text-ink">
+                      <Link href={`/admin/consultations/${r.id}`} className="block">
+                        {r.status}
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

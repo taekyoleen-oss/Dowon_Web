@@ -45,7 +45,7 @@ const personas: Array<{
     no: "D",
     title: "개인 사건의뢰",
     en: "Personal Cases",
-    desc: "보험 분쟁·교통사고 — 1차 상담은 무료입니다.",
+    desc: "보험 분쟁·교통사고 — AI와 함께 사건을 정리하고 1차 무료 상담.",
     href: "/contact/personal",
   },
 ];

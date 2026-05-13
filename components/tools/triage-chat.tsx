@@ -198,12 +198,20 @@ export function TriageChat() {
               {latest.estimated_timeline}
             </p>
 
-            <Link
-              href={`/contact/${classifyToPersona(latest.matter_type)}`}
-              className="mt-7 inline-flex items-center px-5 py-3 bg-gold-deep text-paper rounded-sm font-sans-ko text-[14px] font-medium hover:bg-gold transition-colors"
-            >
-              상담 신청으로 이동 →
-            </Link>
+            <div className="mt-7 flex flex-col gap-2">
+              <Link
+                href="/tools/intake"
+                className="inline-flex items-center justify-center px-5 py-3 bg-gold-deep text-paper rounded-sm font-sans-ko text-[14px] font-medium hover:bg-gold transition-colors"
+              >
+                AI와 더 자세히 정리하기 →
+              </Link>
+              <Link
+                href={`/contact/${classifyToPersona(latest.matter_type)}`}
+                className="inline-flex items-center justify-center px-5 py-3 border border-ink text-ink rounded-sm font-sans-ko text-[14px] font-medium hover:bg-paper-2 transition-colors"
+              >
+                바로 상담 신청
+              </Link>
+            </div>
           </div>
         )}
 
