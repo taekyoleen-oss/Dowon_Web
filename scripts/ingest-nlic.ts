@@ -57,21 +57,45 @@ const openai = new OpenAI({ apiKey: OPENAI_KEY });
 const EMBED_MODEL = "text-embedding-3-small";
 
 /**
- * Starter law list — chosen for direct relevance to 도원's practice areas
- * (보험, 의료, 자동차, 채권추심, 형사). Add or trim freely; each run only
- * touches the laws in this array.
+ * Law list — picked for direct relevance to 도원's practice areas.
+ * Grouped by domain so we can prune or extend by section in future
+ * passes. The script is idempotent, so adding a new entry only
+ * embeds that new law on the next run.
  */
 const LAW_LIST = [
-  "자동차손해배상 보장법",
-  "보험업법",
-  "상법",                 // 제4편 보험 등
+  // ── Phase 1 — civil & criminal foundations ───────────────────────
   "민법",
-  "민사집행법",
   "민사소송법",
-  "의료법",
-  "의료사고 피해구제 및 의료분쟁 조정 등에 관한 법률",
+  "민사집행법",
+  "상법",                        // 제4편 보험 등 핵심
   "형법",
   "형사소송법",
+
+  // ── Phase 1 — insurance & auto core ──────────────────────────────
+  "보험업법",
+  "자동차손해배상 보장법",
+
+  // ── Phase 1 — medical core ───────────────────────────────────────
+  "의료법",
+  "의료사고 피해구제 및 의료분쟁 조정 등에 관한 법률",
+
+  // ── Phase 2 — auto / traffic liability ───────────────────────────
+  "교통사고처리 특례법",          // 형사 과실 처리의 출발점
+  "도로교통법",                    // 사고 책임·과실 비율 근거
+  "자동차관리법",                  // 차량 결함·관리 분쟁
+
+  // ── Phase 2 — insurance adjacency ────────────────────────────────
+  "보험사기방지 특별법",          // SIU 협업의 핵심 근거 법
+  "국민건강보험법",                // 의료비·구상 분쟁
+  "산업재해보상보험법",            // 산재 보상·구상
+
+  // ── Phase 2 — medical adjacency ──────────────────────────────────
+  "응급의료에 관한 법률",
+  "약사법",                        // 의약품 관련 의료분쟁
+
+  // ── Phase 2 — recovery & restructuring ───────────────────────────
+  "채무자 회생 및 파산에 관한 법률",
+  "신용정보의 이용 및 보호에 관한 법률",
 ];
 
 const CHUNK = 20;
@@ -90,13 +114,55 @@ async function embedBatch(texts: string[]): Promise<number[][]> {
   return res.data.map((d) => d.embedding);
 }
 
+/** Strip every whitespace char so "자동차손해배상 보장법" == "자동차손해배상보장법". */
+function normalize(s: string): string {
+  return (s ?? "").replace(/\s+/g, "");
+}
+
+/**
+ * Resolve a law name to a single NLIC hit. Fails closed — returns null
+ * if no high-confidence match. We refuse to silently fall back to a
+ * random top hit, which is what produced the wrong-law ingest (유료
+ * 도로법 etc.) on the first run.
+ *
+ * Match priority:
+ *   1. Whitespace-insensitive exact name match
+ *   2. 법령명한글 starts with target (handles "민법" → "민법 / 시행령" etc.)
+ *   3. Give up and log the top candidates so the operator can fix LAW_LIST.
+ */
 async function resolveLawHit(name: string): Promise<NlicLawHit | null> {
-  const json = await searchLaws(name, 5);
-  // NLIC wraps the array under LawSearch.law[]
-  const hits: NlicLawHit[] = json?.LawSearch?.law ?? json?.LawSearch?.Law ?? [];
-  // Pick the exact name match if present, else the first current 법률
-  const exact = hits.find((h) => h.법령명한글?.trim() === name);
-  return exact ?? hits[0] ?? null;
+  const json = await searchLaws(name, 100);
+  const raw = json?.LawSearch?.law ?? json?.LawSearch?.Law ?? [];
+  const hits: NlicLawHit[] = Array.isArray(raw) ? raw : [raw];
+
+  if (hits.length === 0) {
+    console.warn(`[nlic]   no NLIC results for "${name}"`);
+    return null;
+  }
+
+  const target = normalize(name);
+
+  // 1. Exact (whitespace-insensitive) name match
+  const exact = hits.find((h) => normalize(h.법령명한글) === target);
+  if (exact) return exact;
+
+  // 2. Prefix match — prefer 법률 over 시행령·시행규칙
+  const prefixed = hits
+    .filter((h) => normalize(h.법령명한글).startsWith(target))
+    .sort((a, b) => {
+      const aIsAct = (a.법령구분명 ?? "").includes("법률") ? 0 : 1;
+      const bIsAct = (b.법령구분명 ?? "").includes("법률") ? 0 : 1;
+      return aIsAct - bIsAct;
+    })[0];
+  if (prefixed) return prefixed;
+
+  // 3. Fail closed — log top candidates so we can adjust LAW_LIST
+  const top = hits
+    .slice(0, 5)
+    .map((h) => `${h.법령명한글} [${h.법령구분명 ?? "—"}]`)
+    .join(", ");
+  console.warn(`[nlic]   no confident match for "${name}". Top: ${top}`);
+  return null;
 }
 
 async function ingestLaw(name: string) {
@@ -106,7 +172,14 @@ async function ingestLaw(name: string) {
     console.warn(`[nlic]   no hit — skipping`);
     return;
   }
-  const body = await fetchLawBody({ MST: hit.법령ID });
+  console.log(
+    `[nlic]   matched → ${hit.법령명한글} (${hit.법령구분명 ?? "?"}, ID=${hit.법령ID})`
+  );
+  // ⚠ Pass `법령ID` as ID, not MST — they're different identifiers in NLIC.
+  // Using MST=hit.법령ID returns a completely different law (whose MST
+  // happens to share the same numeric value), which is what produced the
+  // wrong-name ingest earlier.
+  const body = await fetchLawBody({ ID: hit.법령ID });
   const articles = flattenLawArticles(body);
   console.log(`[nlic]   ${hit.법령명한글} — ${articles.length} articles`);
 
@@ -146,7 +219,7 @@ async function ingestLaw(name: string) {
       promulgation_date: parseDate(a.promulgationDate),
       enforcement_date: parseDate(a.enforcementDate),
       embedding: embeddings[i],
-      source_url: `http://www.law.go.kr/DRF/lawService.do?OC=${process.env.NLIC_API_KEY}&target=law&type=HTML&MST=${a.lawId}`,
+      source_url: `http://www.law.go.kr/DRF/lawService.do?OC=${process.env.NLIC_API_KEY}&target=law&type=HTML&ID=${a.lawId}`,
     }));
 
     const { error } = await supabase

@@ -39,13 +39,28 @@ export type NlicLawHit = {
   법령상세링크?: string;
 };
 
+type NlicHo = { 호번호?: string; 호내용?: string };
+type NlicHang = {
+  항번호?: string;
+  항내용?: string;
+  호?: NlicHo | NlicHo[];
+};
+
 export type NlicArticle = {
   조문번호?: string;
-  조문가지번호?: string;
+  조문가지번호?: string | number;
   조문제목?: string;
   조문내용?: string;
-  항?: Array<{ 항번호?: string; 항내용?: string }>;
+  // NLIC returns a single object when there's only one sub-element,
+  // an array when there are many. asArray() normalises this.
+  항?: NlicHang | NlicHang[];
 };
+
+/** Coerce NLIC's "single object or array" fields into an array. */
+function asArray<T>(v: T | T[] | undefined | null): T[] {
+  if (v == null) return [];
+  return Array.isArray(v) ? v : [v];
+}
 
 export type NlicLawBody = {
   법령?: {
@@ -78,37 +93,69 @@ export type NlicPrecHit = {
 /**
  * Generic search across NLIC targets.
  * @param target  "law" | "prec" | "admrul" | "expc" | "detc" | ...
+ *
+ * NLIC sometimes drops requests with transient network errors. We retry
+ * once after a short backoff before bubbling the failure up.
  */
 async function search(
   target: string,
-  query: string,
+  params: Record<string, string>,
   opts: { display?: number; page?: number } = {}
 ) {
   const url = new URL(`${BASE}/lawSearch.do`);
   url.searchParams.set("OC", oc());
   url.searchParams.set("target", target);
   url.searchParams.set("type", "JSON");
-  url.searchParams.set("query", query);
-  url.searchParams.set("display", String(opts.display ?? 20));
+  url.searchParams.set("display", String(opts.display ?? 100));
   if (opts.page) url.searchParams.set("page", String(opts.page));
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
-  const res = await fetch(url, {
-    headers: { "user-agent": "DowonWeb/1.0 (https://www.dowonlaw.com)" },
-    // 24h cache — NLIC search results are stable enough at this granularity
-    next: { revalidate: 60 * 60 * 24 },
-  });
-  if (!res.ok) {
-    throw new Error(`NLIC ${target} search ${res.status} for "${query}"`);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "user-agent": "DowonWeb/1.0 (https://www.dowonlaw.com)" },
+        next: { revalidate: 60 * 60 * 24 },
+      });
+      if (!res.ok) {
+        throw new Error(`NLIC ${target} search ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      if (attempt === 1) throw e;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
-  return res.json();
+  // Unreachable — TypeScript doesn't know the loop always returns/throws.
+  throw new Error(`NLIC ${target} search exhausted retries`);
 }
 
-export async function searchLaws(query: string, display = 20) {
-  return search("law", query, { display });
+/**
+ * Search laws by name. NLIC's `lawSearch.do` defaults to full-text
+ * search (`search=2`) — given "보험업법" it returns every law whose
+ * BODY mentions any of those tokens, which produced the earlier
+ * 유료도로법·도로정비촉진법 ingest. The `search=1` switch restricts
+ * the query to the law-name field only, which is what we actually
+ * want. (Confirmed working — the response carries `section: "lawNm"`.)
+ *
+ * We do NOT filter by 법령구분 (rrClsCd) — early experiments showed
+ * the code we tried (010201) filtered out 법률 entirely, returning
+ * totalCnt=0. The resolver in scripts/ingest-nlic.ts already prefers
+ * hits whose 법령구분명 includes "법률" over 시행령·시행규칙, so the
+ * downstream sort handles the noise.
+ */
+export async function searchLaws(name: string, display = 100) {
+  return search(
+    "law",
+    {
+      query: name,
+      search: "1", // 1 = 법령명, 2 = 본문 (default)
+    },
+    { display }
+  );
 }
 
 export async function searchPrecedents(query: string, display = 30) {
-  return search("prec", query, { display });
+  return search("prec", { query }, { display });
 }
 
 /** Fetch a law's full text by MST (법령마스터ID) or ID. */
@@ -151,6 +198,18 @@ export async function fetchPrecedentBody(serial: string) {
  * Normalise a law body response into flat per-article rows ready for
  * embedding. The API returns nested 조문 / 항 / 호 — we flatten to
  * (법령ID, 조문번호, 조문제목, 조문본문) tuples.
+ *
+ * Robustness notes:
+ *  - 조문단위 / 항 / 호 each return as a bare object when there's only
+ *    one — asArray() handles that.
+ *  - 조문가지번호 = 0 / "0" / "" all mean "no branch" (i.e. 제12조,
+ *    not 제12조의2). We treat them as absent.
+ *  - Articles with neither 조문내용 nor 항/호 content are skipped (they
+ *    appear in the response for deleted/reserved article slots).
+ *  - Within a single law, duplicate (조문번호 + 가지) are de-duped —
+ *    NLIC occasionally returns the same article twice for historical/
+ *    transitional reasons, which would otherwise blow up the upsert
+ *    with "ON CONFLICT DO UPDATE command cannot affect row a second time".
  */
 export function flattenLawArticles(body: NlicLawBody): Array<{
   lawId: string;
@@ -168,31 +227,48 @@ export function flattenLawArticles(body: NlicLawBody): Array<{
   const lawName = info.법령명_한글 ?? "";
   if (!lawId || !lawName) return [];
 
-  const articlesRaw = law.조문?.조문단위;
-  const articles: NlicArticle[] = Array.isArray(articlesRaw)
-    ? articlesRaw
-    : articlesRaw
-    ? [articlesRaw]
-    : [];
+  const articles = asArray(law.조문?.조문단위);
+  const rows: ReturnType<typeof flattenLawArticles> = [];
+  const seen = new Set<string>();
 
-  return articles
-    .filter((a) => a.조문내용)
-    .map((a) => {
-      const num = [a.조문번호, a.조문가지번호].filter(Boolean).join("-");
-      const articleBody = [
-        a.조문내용 ?? "",
-        ...(a.항 ?? []).map((h) => `${h.항번호 ?? ""} ${h.항내용 ?? ""}`.trim()),
-      ]
-        .filter(Boolean)
-        .join("\n");
-      return {
-        lawId,
-        lawName,
-        promulgationDate: info.공포일자,
-        enforcementDate: info.시행일자,
-        articleNumber: num,
-        articleTitle: a.조문제목 ?? "",
-        articleBody,
-      };
+  for (const a of articles) {
+    const branchRaw = a.조문가지번호;
+    const branchStr = branchRaw == null ? "" : String(branchRaw).trim();
+    const hasBranch = branchStr !== "" && branchStr !== "0";
+    const baseNum = String(a.조문번호 ?? "").trim();
+    if (!baseNum) continue;
+    const num = hasBranch ? `${baseNum}-${branchStr}` : baseNum;
+
+    if (seen.has(num)) continue;
+    seen.add(num);
+
+    // Flatten 항 → 호 tree into newline-joined lines
+    const hangLines = asArray(a.항)
+      .map((h) => {
+        const hoLines = asArray(h.호)
+          .map((o) => `  ${o.호번호 ?? ""} ${o.호내용 ?? ""}`.trim())
+          .filter(Boolean);
+        const head = `${h.항번호 ?? ""} ${h.항내용 ?? ""}`.trim();
+        return [head, ...hoLines].filter(Boolean).join("\n");
+      })
+      .filter(Boolean);
+
+    const articleBody = [a.조문내용 ?? "", ...hangLines]
+      .filter((s) => s && s.trim())
+      .join("\n");
+
+    if (!articleBody.trim()) continue;
+
+    rows.push({
+      lawId,
+      lawName,
+      promulgationDate: info.공포일자,
+      enforcementDate: info.시행일자,
+      articleNumber: num,
+      articleTitle: a.조문제목 ?? "",
+      articleBody,
     });
+  }
+
+  return rows;
 }
