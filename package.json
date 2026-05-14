@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "seed": "tsx scripts/seed-supabase.ts",
     "embeddings": "tsx scripts/ingest-embeddings.ts",
+    "ingest:nlic": "tsx scripts/ingest-nlic.ts",
     "photos": "tsx scripts/download-lawyer-photos.ts"
   },
   "dependencies": {
