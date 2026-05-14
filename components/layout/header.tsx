@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import * as React from "react";
 import { Menu, X, Phone, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Container } from "./container";
 
 type NavChild = { label: string; href: string; desc?: string };
-type NavItem = { label: string; href: string; children: NavChild[] };
+type NavItem = { label: string; href: string; children?: NavChild[] };
 
 const navItems: NavItem[] = [
   {
@@ -63,6 +64,11 @@ const navItems: NavItem[] = [
       { label: "AI 의미 검색",  href: "/library/search" },
     ],
   },
+  {
+    label: "고객사",
+    href: "/clients",
+    // No dropdown — single page
+  },
 ];
 
 const PHONE = "02-3481-6540";
@@ -77,6 +83,27 @@ function DesktopDropdown({ item }: { item: NavItem }) {
   const [open, setOpen] = React.useState(false);
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = React.useRef<HTMLLIElement | null>(null);
+  const hasChildren = (item.children?.length ?? 0) > 0;
+
+  // No-children case — render as a plain link (e.g. 고객사) so the
+  // chevron + empty dropdown panel don't appear.
+  if (!hasChildren) {
+    return (
+      <li>
+        <Link
+          href={item.href}
+          className={cn(
+            "inline-flex items-center py-5",
+            "font-serif-ko text-[15px] text-ink-soft",
+            "transition-colors duration-fast ease-out-curve",
+            "hover:text-ink focus-visible:text-ink"
+          )}
+        >
+          {item.label}
+        </Link>
+      </li>
+    );
+  }
 
   const openNow = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -145,7 +172,7 @@ function DesktopDropdown({ item }: { item: NavItem }) {
           )}
         >
           <ul>
-            {item.children.map((c) => (
+            {(item.children ?? []).map((c) => (
               <li key={c.href} role="none">
                 <Link
                   role="menuitem"
@@ -194,9 +221,15 @@ export function Header() {
         )}
       >
         <Container size="wide" className="flex h-16 items-center justify-between lg:h-20">
-          <Link href="/" className="flex items-baseline gap-2" aria-label="법무법인 도원 홈">
-            <span className="font-display italic text-2xl text-ink lg:text-3xl">Dowon</span>
-            <span className="font-serif-ko text-sm text-ink-soft lg:text-base">법무법인 도원</span>
+          <Link href="/" className="flex items-center" aria-label="법무법인 도원 홈">
+            <Image
+              src="/brand/logo-dark.png"
+              alt="법무법인 도원"
+              width={250}
+              height={70}
+              priority
+              className="h-9 w-auto lg:h-11"
+            />
           </Link>
 
           <nav aria-label="주요 메뉴" className="hidden lg:block">
@@ -268,6 +301,7 @@ export function Header() {
               <ul className="flex flex-col">
                 {navItems.map((item) => {
                   const isOpen = expanded === item.href;
+                  const hasChildren = (item.children?.length ?? 0) > 0;
                   return (
                     <li key={item.href} className="border-b border-paper-3 last:border-b-0">
                       <div className="flex items-center">
@@ -278,28 +312,30 @@ export function Header() {
                         >
                           {item.label}
                         </Link>
-                        <button
-                          type="button"
-                          aria-label={`${item.label} 하위 메뉴 ${isOpen ? "닫기" : "열기"}`}
-                          aria-expanded={isOpen}
-                          onClick={() =>
-                            setExpanded((cur) => (cur === item.href ? null : item.href))
-                          }
-                          className="px-3 py-3.5 text-ink-mute hover:text-ink"
-                        >
-                          <ChevronDown
-                            size={16}
-                            aria-hidden
-                            className={cn(
-                              "transition-transform duration-fast",
-                              isOpen && "rotate-180"
-                            )}
-                          />
-                        </button>
+                        {hasChildren && (
+                          <button
+                            type="button"
+                            aria-label={`${item.label} 하위 메뉴 ${isOpen ? "닫기" : "열기"}`}
+                            aria-expanded={isOpen}
+                            onClick={() =>
+                              setExpanded((cur) => (cur === item.href ? null : item.href))
+                            }
+                            className="px-3 py-3.5 text-ink-mute hover:text-ink"
+                          >
+                            <ChevronDown
+                              size={16}
+                              aria-hidden
+                              className={cn(
+                                "transition-transform duration-fast",
+                                isOpen && "rotate-180"
+                              )}
+                            />
+                          </button>
+                        )}
                       </div>
-                      {isOpen && (
+                      {hasChildren && isOpen && (
                         <ul className="pb-3 pl-3 space-y-0.5">
-                          {item.children.map((c) => (
+                          {(item.children ?? []).map((c) => (
                             <li key={c.href}>
                               <Link
                                 href={c.href}

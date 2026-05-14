@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Container } from "./container";
 
 const footerSections: Array<{
@@ -50,11 +51,15 @@ export function Footer() {
       <Container size="wide" className="py-16 lg:py-24">
         <div className="grid gap-12 lg:grid-cols-[1.4fr_repeat(4,1fr)]">
           <div>
-            <div className="flex items-baseline gap-2">
-              <span className="font-display italic text-3xl">Dowon</span>
-              <span className="font-serif-ko text-base text-paper-3">법무법인 도원</span>
-            </div>
-            <p className="mt-5 max-w-sm font-serif-ko text-[14.5px] leading-loose text-paper-3">
+            <Image
+              src="/brand/logo.png"
+              alt="법무법인 도원"
+              width={206}
+              height={66}
+              className="h-12 w-auto"
+              priority={false}
+            />
+            <p className="mt-6 max-w-sm font-serif-ko text-[14.5px] leading-loose text-paper-3">
               조사 → 소송 → 구상 → 추심,<br />한 팀으로 끝냅니다.
             </p>
             <address className="mt-6 not-italic font-sans-ko text-[13.5px] leading-loose text-paper-3">
