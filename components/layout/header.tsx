@@ -1,24 +1,175 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Menu, X, Phone } from "lucide-react";
+import * as React from "react";
+import { Menu, X, Phone, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Container } from "./container";
 
-const navItems = [
-  { label: "소개",       href: "/about" },
-  { label: "업무분야",   href: "/practice" },
-  { label: "구성원",     href: "/people/lawyers" },
-  { label: "부설기관",   href: "/centers/investigation" },
-  { label: "라이브러리", href: "/library" },
+type NavChild = { label: string; href: string; desc?: string };
+type NavItem = { label: string; href: string; children: NavChild[] };
+
+const navItems: NavItem[] = [
+  {
+    label: "소개",
+    href: "/about",
+    children: [
+      { label: "개요",       href: "/about" },
+      { label: "철학",       href: "/about/philosophy" },
+      { label: "역량",       href: "/about/capability" },
+      { label: "연혁",       href: "/about/history" },
+      { label: "오시는 길",  href: "/about/contact" },
+    ],
+  },
+  {
+    label: "업무분야",
+    href: "/practice",
+    children: [
+      { label: "개요",       href: "/practice" },
+      { label: "보험 분쟁",  href: "/practice/insurance" },
+      { label: "의료분쟁",   href: "/practice/medical" },
+      { label: "민간조사",   href: "/practice/investigation" },
+      { label: "기업자문",   href: "/practice/advisory" },
+      { label: "구상",       href: "/practice/subrogation" },
+    ],
+  },
+  {
+    label: "구성원",
+    href: "/people/lawyers",
+    children: [
+      { label: "변호사",         href: "/people/lawyers" },
+      { label: "고문·전문위원",  href: "/people/fellows" },
+      { label: "채권회수팀",     href: "/people/recovery" },
+      { label: "경영관리팀",     href: "/people/management" },
+      { label: "조직도",         href: "/people/group" },
+    ],
+  },
+  {
+    label: "부설기관",
+    href: "/centers/investigation",
+    children: [
+      { label: "민간조사센터",      href: "/centers/investigation" },
+      { label: "의료분쟁지원센터",  href: "/centers/medical" },
+    ],
+  },
+  {
+    label: "라이브러리",
+    href: "/library",
+    children: [
+      { label: "전체",          href: "/library" },
+      { label: "판례",          href: "/library/cases" },
+      { label: "칼럼",          href: "/library/columns" },
+      { label: "강의·미디어",   href: "/library/media" },
+      { label: "AI 의미 검색",  href: "/library/search" },
+    ],
+  },
 ];
 
 const PHONE = "02-3481-6540";
 const PHONE_HREF = "tel:0234816540";
 
+/**
+ * Desktop dropdown — opens on hover OR focus, closes on blur and on
+ * mouse leave (with a small grace delay so users can move from the
+ * trigger row to the panel without losing it).
+ */
+function DesktopDropdown({ item }: { item: NavItem }) {
+  const [open, setOpen] = React.useState(false);
+  const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = React.useRef<HTMLLIElement | null>(null);
+
+  const openNow = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpen(true);
+  };
+  const closeSoon = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setOpen(false), 120);
+  };
+
+  // Close when focus leaves the whole li
+  const onBlurCapture = (e: React.FocusEvent<HTMLLIElement>) => {
+    if (!containerRef.current) return;
+    if (!containerRef.current.contains(e.relatedTarget as Node | null)) {
+      setOpen(false);
+    }
+  };
+
+  // ESC closes and returns focus to trigger
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <li
+      ref={containerRef}
+      className="relative"
+      onMouseEnter={openNow}
+      onMouseLeave={closeSoon}
+      onFocus={openNow}
+      onBlurCapture={onBlurCapture}
+      onKeyDown={onKeyDown}
+    >
+      <Link
+        href={item.href}
+        className={cn(
+          "inline-flex items-center gap-1 py-5",
+          "font-serif-ko text-[15px] text-ink-soft",
+          "transition-colors duration-fast ease-out-curve",
+          "hover:text-ink focus-visible:text-ink"
+        )}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {item.label}
+        <ChevronDown
+          size={13}
+          aria-hidden
+          className={cn(
+            "text-ink-mute transition-transform duration-fast",
+            open && "rotate-180"
+          )}
+        />
+      </Link>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label={`${item.label} 하위 메뉴`}
+          className={cn(
+            "absolute left-0 top-full min-w-[200px]",
+            "bg-paper border border-paper-3 rounded-sm shadow-lg",
+            "py-2"
+          )}
+        >
+          <ul>
+            {item.children.map((c) => (
+              <li key={c.href} role="none">
+                <Link
+                  role="menuitem"
+                  href={c.href}
+                  className={cn(
+                    "block px-4 py-2.5 font-serif-ko text-[14.5px] text-ink-soft",
+                    "hover:bg-paper-2 hover:text-ink focus-visible:bg-paper-2 focus-visible:text-ink",
+                    "transition-colors duration-fast outline-none"
+                  )}
+                >
+                  {c.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </li>
+  );
+}
+
 export function Header() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = React.useState(false);
+  const [expanded, setExpanded] = React.useState<string | null>(null);
 
   return (
     <>
@@ -51,18 +202,7 @@ export function Header() {
           <nav aria-label="주요 메뉴" className="hidden lg:block">
             <ul className="flex items-center gap-8">
               {navItems.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "font-serif-ko text-[15px] text-ink-soft",
-                      "transition-colors duration-fast ease-out-curve",
-                      "hover:text-ink"
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
+                <DesktopDropdown key={item.href} item={item} />
               ))}
             </ul>
           </nav>
@@ -122,21 +262,59 @@ export function Header() {
         {open && (
           <nav
             aria-label="모바일 메뉴"
-            className="lg:hidden border-t border-paper-3 bg-paper"
+            className="lg:hidden border-t border-paper-3 bg-paper max-h-[calc(100vh-4rem)] overflow-y-auto"
           >
-            <Container size="wide" className="py-4">
-              <ul className="flex flex-col gap-1">
-                {navItems.map((item) => (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={() => setOpen(false)}
-                      className="block py-3 font-serif-ko text-base text-ink-soft hover:text-ink"
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                ))}
+            <Container size="wide" className="py-2">
+              <ul className="flex flex-col">
+                {navItems.map((item) => {
+                  const isOpen = expanded === item.href;
+                  return (
+                    <li key={item.href} className="border-b border-paper-3 last:border-b-0">
+                      <div className="flex items-center">
+                        <Link
+                          href={item.href}
+                          onClick={() => setOpen(false)}
+                          className="flex-1 block py-3.5 font-serif-ko text-base text-ink hover:text-gold-deep"
+                        >
+                          {item.label}
+                        </Link>
+                        <button
+                          type="button"
+                          aria-label={`${item.label} 하위 메뉴 ${isOpen ? "닫기" : "열기"}`}
+                          aria-expanded={isOpen}
+                          onClick={() =>
+                            setExpanded((cur) => (cur === item.href ? null : item.href))
+                          }
+                          className="px-3 py-3.5 text-ink-mute hover:text-ink"
+                        >
+                          <ChevronDown
+                            size={16}
+                            aria-hidden
+                            className={cn(
+                              "transition-transform duration-fast",
+                              isOpen && "rotate-180"
+                            )}
+                          />
+                        </button>
+                      </div>
+                      {isOpen && (
+                        <ul className="pb-3 pl-3 space-y-0.5">
+                          {item.children.map((c) => (
+                            <li key={c.href}>
+                              <Link
+                                href={c.href}
+                                onClick={() => setOpen(false)}
+                                className="block py-2.5 pl-3 border-l border-paper-3 font-serif-ko text-[14.5px] text-ink-soft hover:text-ink hover:border-ink"
+                              >
+                                {c.label}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
               <div className="mt-3 pt-3 border-t border-paper-3 flex items-center justify-between">
                 <a
