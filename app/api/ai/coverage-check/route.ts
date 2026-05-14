@@ -35,9 +35,19 @@ const incidentSchema = z.object({
   description: z.string().min(20, "사고/질병 내용을 20자 이상 입력해 주세요."),
 });
 
+const turnSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+});
+
 const bodySchema = z.object({
   policy_text: z.string().optional(),
   incident: incidentSchema,
+  // Follow-up support: prior alternating turns (user/assistant). When
+  // non-empty, `followup_message` is treated as the new user input and the
+  // request is sent to Claude as a multi-turn conversation.
+  history: z.array(turnSchema).optional(),
+  followup_message: z.string().optional(),
   acknowledged_disclaimer: z.literal(true, {
     message: "이용 동의가 필요합니다.",
   }),
@@ -98,6 +108,14 @@ ${SHARED_STREAM_INSTRUCTIONS}
 - 첫 문장: "본 결과는 일반 정보 안내이며 법률·보험 자문이 아닙니다."
 - 분량: 4~6문장 정도로 간결하게.
 - "지급됩니다" 같은 단정 표현 절대 금지.
+
+[후속 대화 처리 — 멀티턴]
+사용자가 추가 질문이나 보충 자료(텍스트/PDF)를 제공해 대화를 이어가는 경우:
+- 직전 분석 결과를 기억하고, 새 정보를 반영해 검토를 *갱신*합니다.
+- 첫 문장 디스클레이머("본 결과는 ... 자문이 아닙니다.")는 매 응답마다 반복합니다.
+- 새 정보가 없는 단순 질문이면 기존 검토를 더 자세히 설명하되, state JSON은 변경되지 않은 필드를 그대로 유지합니다.
+- 새 정보가 있으면 coverage_clauses / exclusion_candidates / possibility / missing_info 등을 갱신하고, 갱신 사유를 한 줄로 reply에 포함합니다 (예: "추가 자료를 반영하여 면책 후보 1건을 갱신했습니다").
+- 어떤 경우든 위에 명시된 출력 형식(reply → STATE 마커 → state JSON)을 그대로 따릅니다.
 
 ${SYSTEM_FOOTER}`;
 
@@ -166,13 +184,17 @@ async function parseRequest(req: Request): Promise<{
   ok: true;
   body: z.infer<typeof bodySchema>;
   policyText: string;
+  extraFile?: File;
 } | { ok: false; response: Response }> {
   const ct = req.headers.get("content-type") ?? "";
 
-  // multipart path — PDF + JSON
+  // multipart path — PDF + JSON. Two PDF slots:
+  //   - `policy`: the original policy PDF (re-sent on follow-up turns)
+  //   - `extra`:  supplementary doc attached only in follow-up turns
   if (ct.includes("multipart/form-data")) {
     const fd = await req.formData();
     const file = fd.get("policy");
+    const extra = fd.get("extra");
     const bodyJson = fd.get("body");
     if (typeof bodyJson !== "string") {
       return {
@@ -216,7 +238,20 @@ PDF 본문은 이 메시지 다음의 document 블록을 참조하세요.`;
       // We'll stash the file on the parsed object via a side channel
       (parsed as { _pdfFile?: File })._pdfFile = file;
     }
-    return { ok: true, body: parsed, policyText };
+    let extraFile: File | undefined;
+    if (extra instanceof File) {
+      if (extra.size > 10 * 1024 * 1024) {
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: "추가 PDF가 10MB를 초과합니다." },
+            { status: 413 }
+          ),
+        };
+      }
+      extraFile = extra;
+    }
+    return { ok: true, body: parsed, policyText, extraFile };
   }
 
   // JSON path — text-only
@@ -246,8 +281,10 @@ export async function POST(req: Request) {
 
   const parsed = await parseRequest(req);
   if (!parsed.ok) return parsed.response;
-  const { body, policyText } = parsed;
+  const { body, policyText, extraFile } = parsed;
   const pdfFile = (body as { _pdfFile?: File })._pdfFile;
+  const history = body.history ?? [];
+  const isFollowup = history.length > 0 && !!body.followup_message?.trim();
 
   // Stub fallback when no Anthropic key.
   if (!hasAnthropicConfig()) {
@@ -276,19 +313,21 @@ export async function POST(req: Request) {
   const anthropic = getAnthropic();
   const t0 = Date.now();
 
-  // Compose the user message — include policy text and incident; if PDF is
-  // attached, send it as a separate document block.
-  const userParts: Array<
+  // Compose the original user message (policy + incident). On follow-up
+  // turns, this is replayed as messages[0] so Claude still has access to
+  // the policy PDF/text for re-evaluation.
+  type UserPart =
     | { type: "text"; text: string }
     | {
         type: "document";
         source: { type: "base64"; media_type: "application/pdf"; data: string };
-      }
-  > = [];
+      };
+
+  const initialUserParts: UserPart[] = [];
 
   if (pdfFile) {
     const buf = Buffer.from(await pdfFile.arrayBuffer());
-    userParts.push({
+    initialUserParts.push({
       type: "document",
       source: {
         type: "base64",
@@ -298,7 +337,7 @@ export async function POST(req: Request) {
     });
   }
 
-  userParts.push({
+  initialUserParts.push({
     type: "text",
     text:
       `[약관]\n${policyText || "(약관 텍스트 미제공 — 위 PDF 또는 일반 약관 지식 기반으로 답변)"}\n\n` +
@@ -309,11 +348,54 @@ export async function POST(req: Request) {
       `- 설명: ${body.incident.description}`,
   });
 
+  // Build the messages array. For follow-ups, replay the original turn,
+  // then alternating history, then the new user message (with optional
+  // additional PDF).
+  const messages: Array<
+    | { role: "user"; content: UserPart[] }
+    | { role: "assistant"; content: string }
+  > = [{ role: "user", content: initialUserParts }];
+
+  if (isFollowup) {
+    for (const turn of history) {
+      if (turn.role === "assistant") {
+        messages.push({ role: "assistant", content: turn.content });
+      } else {
+        messages.push({
+          role: "user",
+          content: [{ type: "text", text: turn.content }],
+        });
+      }
+    }
+
+    const followupParts: UserPart[] = [];
+    if (extraFile) {
+      const buf = Buffer.from(await extraFile.arrayBuffer());
+      followupParts.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: buf.toString("base64"),
+        },
+      });
+      followupParts.push({
+        type: "text",
+        text: `[추가 자료 PDF 첨부됨: ${extraFile.name} · ${(extraFile.size / 1024).toFixed(0)}KB]`,
+      });
+    }
+    followupParts.push({
+      type: "text",
+      text: `[사용자 추가 입력]\n${body.followup_message ?? ""}`,
+    });
+    messages.push({ role: "user", content: followupParts });
+  }
+
   const aiStream = anthropic.messages.stream({
     model: CLAUDE_MODEL,
     max_tokens: 2500,
     system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-    messages: [{ role: "user", content: userParts }],
+    messages,
   });
 
   const stream = ndjsonFromAnthropicStream<CoverageState>(aiStream, {
@@ -340,6 +422,9 @@ export async function POST(req: Request) {
           policy_text_length: policyText.length,
           has_pdf: !!pdfFile,
           description_length: body.incident.description.length,
+          is_followup: isFollowup,
+          history_turns: history.length,
+          has_extra_pdf: !!extraFile,
         },
         output: {
           possibility: parsedState?.possibility,

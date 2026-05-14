@@ -1,12 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { Upload, Sparkles, FileText } from "lucide-react";
+import { Upload, Sparkles, FileText, Send, Paperclip, X } from "lucide-react";
 import { Field, Textarea, Select } from "@/components/contact/form-primitives";
 import { LegalDisclaimer } from "@/components/ai/legal-disclaimer";
 import { consumeNdjsonStream } from "@/lib/ai/stream-client";
 import { CoverageResultPanel, type CoverageResult } from "./coverage-result";
 import { cn } from "@/lib/utils";
+
+type Turn = {
+  role: "user" | "assistant";
+  content: string;
+  attachedName?: string;
+};
 
 const categories = [
   { value: "auto",      label: "자동차보험 (사고)" },
@@ -41,6 +47,15 @@ export function CoverageCheckForm() {
   const [result, setResult] = React.useState<CoverageResult | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const resultRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Follow-up conversation (multi-turn). Each entry is shown in the
+  // follow-up chat below the result panel. The initial reply is NOT in
+  // here — it lives in the result panel as the canonical first answer.
+  const [followupTurns, setFollowupTurns] = React.useState<Turn[]>([]);
+  const [followupInput, setFollowupInput] = React.useState("");
+  const [followupFile, setFollowupFile] = React.useState<File | null>(null);
+  const [followupSubmitting, setFollowupSubmitting] = React.useState(false);
+  const followupEndRef = React.useRef<HTMLDivElement | null>(null);
 
   const canProceedStep1 =
     (policyMode === "pdf" && policyFile) || (policyMode === "text" && policyText.trim().length > 30);
@@ -140,6 +155,116 @@ export function CoverageCheckForm() {
     setReply("");
     setResult(null);
     setError(null);
+    setFollowupTurns([]);
+    setFollowupInput("");
+    setFollowupFile(null);
+  };
+
+  const sendFollowup = async () => {
+    const text = followupInput.trim();
+    if (followupSubmitting || (!text && !followupFile)) return;
+    setFollowupSubmitting(true);
+    setError(null);
+
+    // Build history: the initial assistant reply + all prior follow-up turns.
+    const history: Array<{ role: "user" | "assistant"; content: string }> = [
+      { role: "assistant", content: reply },
+      ...followupTurns.map((t) => ({ role: t.role, content: t.content })),
+    ];
+
+    const userTurn: Turn = {
+      role: "user",
+      content: text || "(추가 자료 첨부)",
+      attachedName: followupFile?.name,
+    };
+    const assistantPlaceholder: Turn = { role: "assistant", content: "" };
+    setFollowupTurns((prev) => [...prev, userTurn, assistantPlaceholder]);
+
+    const pendingFile = followupFile;
+    setFollowupInput("");
+    setFollowupFile(null);
+
+    // Scroll the new turn into view (chat-style)
+    setTimeout(() => {
+      followupEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 50);
+
+    const incident = {
+      category,
+      occurred_at: occurredAt || undefined,
+      amount_estimate: amount || undefined,
+      description,
+    };
+
+    const payload = {
+      incident,
+      acknowledged_disclaimer: true as const,
+      policy_text: policyMode === "text" ? policyText : "",
+      history,
+      followup_message: text,
+    };
+
+    try {
+      // Use multipart if we have any PDF — original policy and/or new attachment.
+      let res: Response;
+      if (policyMode === "pdf" && policyFile) {
+        const fd = new FormData();
+        fd.append("policy", policyFile);
+        if (pendingFile) fd.append("extra", pendingFile);
+        fd.append("body", JSON.stringify(payload));
+        res = await fetch("/api/ai/coverage-check", { method: "POST", body: fd });
+      } else if (pendingFile) {
+        const fd = new FormData();
+        if (pendingFile) fd.append("extra", pendingFile);
+        fd.append("body", JSON.stringify(payload));
+        res = await fetch("/api/ai/coverage-check", { method: "POST", body: fd });
+      } else {
+        res = await fetch("/api/ai/coverage-check", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.message ?? "잠시 후 다시 시도해 주세요.");
+        setFollowupTurns((prev) => prev.slice(0, -2)); // remove pending pair
+        setFollowupSubmitting(false);
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "분석 중 오류가 발생했습니다.");
+        setFollowupTurns((prev) => prev.slice(0, -2));
+        setFollowupSubmitting(false);
+        return;
+      }
+
+      let accumulated = "";
+      await consumeNdjsonStream(res, {
+        onToken: (chunk) => {
+          accumulated += chunk;
+          setFollowupTurns((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            copy[copy.length - 1] = { role: "assistant", content: accumulated };
+            return copy;
+          });
+        },
+        onState: (payload) => {
+          setResult(payload as CoverageResult);
+        },
+        onError: (msg) => {
+          setError(msg);
+        },
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "네트워크 오류가 발생했습니다.");
+      setFollowupTurns((prev) => prev.slice(0, -2));
+    } finally {
+      setFollowupSubmitting(false);
+    }
   };
 
   return (
@@ -410,15 +535,141 @@ export function CoverageCheckForm() {
 
           <CoverageResultPanel reply={reply} result={result} loading={submitting} />
 
+          {/* Follow-up chat — append-only, no need to restart from step 1 */}
           {result && !submitting && (
-            <div className="flex justify-between gap-3 pt-4">
-              <button
-                type="button"
-                onClick={reset}
-                className="inline-flex items-center px-5 py-3 border border-ink text-ink rounded-sm font-sans-ko text-[14.5px] font-medium hover:bg-paper-2 transition-colors"
-              >
-                ↻ 다시 시작
-              </button>
+            <div className="space-y-5 pt-6 border-t border-paper-3">
+              <div>
+                <p className="label-mono text-gold">FOLLOW-UP · 추가 질문 또는 자료 보충</p>
+                <h3 className="mt-3 font-serif-ko text-h3 font-semibold text-ink">
+                  검토 결과에 대해 더 묻거나 자료를 추가하세요
+                </h3>
+                <p className="mt-3 font-serif-ko text-body text-ink-soft leading-base">
+                  추가 정보(약관 일부, 진단서, 사고 경위 등)를 텍스트나 PDF로 보내시면 검토가 갱신됩니다.
+                  처음부터 다시 시작할 필요는 없습니다.
+                </p>
+              </div>
+
+              {/* Conversation history */}
+              {followupTurns.length > 0 && (
+                <ul className="space-y-3">
+                  {followupTurns.map((t, i) => (
+                    <li
+                      key={i}
+                      className={cn(
+                        "rounded-md p-4 max-w-[92%]",
+                        t.role === "user"
+                          ? "ml-auto bg-ink text-paper"
+                          : "mr-auto bg-paper-2 text-ink border border-paper-3"
+                      )}
+                    >
+                      <p className="font-mono text-[10px] uppercase tracking-label opacity-70">
+                        {t.role === "user" ? "나" : "AI 검토 갱신"}
+                      </p>
+                      {t.attachedName && (
+                        <p className="mt-1 inline-flex items-center gap-1 font-mono text-[11px] opacity-80">
+                          <Paperclip size={11} aria-hidden /> {t.attachedName}
+                        </p>
+                      )}
+                      <p className="mt-2 font-serif-ko text-[14.5px] leading-base whitespace-pre-wrap">
+                        {t.content ||
+                          (t.role === "assistant" && followupSubmitting
+                            ? "검토 갱신 중..."
+                            : "")}
+                        {t.role === "assistant" &&
+                          followupSubmitting &&
+                          i === followupTurns.length - 1 &&
+                          t.content && (
+                            <span className="inline-block w-2 h-4 bg-ink-mute animate-pulse ml-1 align-middle" />
+                          )}
+                      </p>
+                    </li>
+                  ))}
+                  <div ref={followupEndRef} />
+                </ul>
+              )}
+
+              {/* Composer */}
+              <div className="rounded-md border border-paper-3 bg-paper p-4 space-y-3">
+                {followupFile && (
+                  <div className="flex items-center justify-between rounded-sm border border-paper-3 bg-paper-2 px-3 py-2">
+                    <span className="inline-flex items-center gap-2 font-mono text-[12px] text-ink-soft">
+                      <FileText size={13} aria-hidden className="text-gold-deep" />
+                      {followupFile.name} ({(followupFile.size / 1024).toFixed(0)} KB)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFollowupFile(null)}
+                      className="text-ink-mute hover:text-rust"
+                      aria-label="첨부 제거"
+                    >
+                      <X size={14} aria-hidden />
+                    </button>
+                  </div>
+                )}
+                <textarea
+                  value={followupInput}
+                  onChange={(e) => setFollowupInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      void sendFollowup();
+                    }
+                  }}
+                  rows={3}
+                  placeholder="예) 면책 조항 중 음주 관련 부분이 명확하지 않습니다. 진단서를 추가로 첨부할 테니 다시 검토해 주세요."
+                  disabled={followupSubmitting}
+                  className="w-full resize-y rounded-sm border border-paper-3 bg-paper px-3 py-2 font-serif-ko text-body text-ink placeholder:text-ink-mute/70 focus:outline-none focus:ring-2 focus:ring-ink/20 disabled:opacity-60"
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <label
+                    htmlFor="cv-followup-pdf"
+                    className={cn(
+                      "inline-flex items-center gap-2 px-3 py-2 border border-paper-3 rounded-sm cursor-pointer",
+                      "font-mono text-[11px] uppercase tracking-label text-ink-soft hover:border-ink",
+                      followupSubmitting && "opacity-50 pointer-events-none"
+                    )}
+                  >
+                    <Paperclip size={13} aria-hidden /> PDF 첨부 (선택)
+                  </label>
+                  <input
+                    id="cv-followup-pdf"
+                    type="file"
+                    accept="application/pdf"
+                    className="sr-only"
+                    disabled={followupSubmitting}
+                    onChange={(e) => setFollowupFile(e.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void sendFollowup()}
+                    disabled={
+                      followupSubmitting ||
+                      (!followupInput.trim() && !followupFile)
+                    }
+                    className={cn(
+                      "inline-flex items-center gap-2 px-5 py-2.5 rounded-sm",
+                      "bg-gold-deep text-paper font-sans-ko text-[14px] font-medium",
+                      "hover:bg-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    )}
+                  >
+                    <Send size={13} aria-hidden />
+                    {followupSubmitting ? "갱신 중..." : "보내기"}
+                  </button>
+                </div>
+                <p className="font-mono text-[10px] uppercase tracking-label text-ink-mute">
+                  Ctrl/⌘ + Enter 로 빠르게 전송
+                </p>
+              </div>
+
+              <div className="flex justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="inline-flex items-center px-5 py-3 border border-ink text-ink rounded-sm font-sans-ko text-[14.5px] font-medium hover:bg-paper-2 transition-colors"
+                >
+                  ↻ 처음부터 다시
+                </button>
+              </div>
             </div>
           )}
 
