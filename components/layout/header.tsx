@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import * as React from "react";
-import { Menu, X, Phone, ChevronDown } from "lucide-react";
+import { Menu, X, Phone, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Container } from "./container";
 
@@ -196,7 +196,7 @@ function DesktopDropdown({ item }: { item: NavItem }) {
 
 export function Header() {
   const [open, setOpen] = React.useState(false);
-  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const close = () => setOpen(false);
 
   return (
     <>
@@ -297,50 +297,45 @@ export function Header() {
             aria-label="모바일 메뉴"
             className="lg:hidden border-t border-paper-3 bg-paper max-h-[calc(100vh-4rem)] overflow-y-auto"
           >
-            <Container size="wide" className="py-2">
-              <ul className="flex flex-col">
+            <Container size="wide" className="py-3">
+              {/* Mobile mirror of the desktop dropdown — every category and
+                  every child is always visible, so visitors see the full
+                  IA at a glance instead of having to expand each section. */}
+              <ul className="flex flex-col divide-y divide-paper-3">
                 {navItems.map((item) => {
-                  const isOpen = expanded === item.href;
                   const hasChildren = (item.children?.length ?? 0) > 0;
                   return (
-                    <li key={item.href} className="border-b border-paper-3 last:border-b-0">
-                      <div className="flex items-center">
-                        <Link
-                          href={item.href}
-                          onClick={() => setOpen(false)}
-                          className="flex-1 block py-3.5 font-serif-ko text-base text-ink hover:text-gold-deep"
-                        >
-                          {item.label}
-                        </Link>
-                        {hasChildren && (
-                          <button
-                            type="button"
-                            aria-label={`${item.label} 하위 메뉴 ${isOpen ? "닫기" : "열기"}`}
-                            aria-expanded={isOpen}
-                            onClick={() =>
-                              setExpanded((cur) => (cur === item.href ? null : item.href))
-                            }
-                            className="px-3 py-3.5 text-ink-mute hover:text-ink"
-                          >
-                            <ChevronDown
-                              size={16}
-                              aria-hidden
-                              className={cn(
-                                "transition-transform duration-fast",
-                                isOpen && "rotate-180"
-                              )}
-                            />
-                          </button>
+                    <li key={item.href} className="py-3">
+                      {/* Category header — tap = go to parent index */}
+                      <Link
+                        href={item.href}
+                        onClick={close}
+                        className={cn(
+                          "group inline-flex items-baseline gap-2",
+                          "font-serif-ko text-[17px] font-semibold text-ink",
+                          "hover:text-gold-deep"
                         )}
-                      </div>
-                      {hasChildren && isOpen && (
-                        <ul className="pb-3 pl-3 space-y-0.5">
+                      >
+                        {item.label}
+                        <ChevronRight
+                          size={13}
+                          aria-hidden
+                          className="text-ink-mute transition-transform group-hover:translate-x-0.5"
+                        />
+                      </Link>
+
+                      {hasChildren && (
+                        <ul className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-3">
                           {(item.children ?? []).map((c) => (
                             <li key={c.href}>
                               <Link
                                 href={c.href}
-                                onClick={() => setOpen(false)}
-                                className="block py-2.5 pl-3 border-l border-paper-3 font-serif-ko text-[14.5px] text-ink-soft hover:text-ink hover:border-ink"
+                                onClick={close}
+                                className={cn(
+                                  "block py-2 pl-3 border-l-2 border-paper-3",
+                                  "font-serif-ko text-[14px] text-ink-soft",
+                                  "hover:text-ink hover:border-gold-deep transition-colors"
+                                )}
                               >
                                 {c.label}
                               </Link>
@@ -352,7 +347,8 @@ export function Header() {
                   );
                 })}
               </ul>
-              <div className="mt-3 pt-3 border-t border-paper-3 flex items-center justify-between">
+
+              <div className="mt-4 pt-4 border-t border-paper-3 flex items-center justify-between">
                 <a
                   href={PHONE_HREF}
                   className="inline-flex items-center gap-1.5 font-mono text-[12px] uppercase tracking-label text-ink"
