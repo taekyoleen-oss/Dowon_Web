@@ -5,44 +5,39 @@ import { OFFICE } from "@/lib/data/office";
 
 export const metadata = { title: "오시는 길" };
 
-// Inline embed = OpenStreetMap (only no-auth option that allows iframe).
-// Naver Map and Kakao Map both set X-Frame-Options that block iframe
-// embedding from external domains. To get a real interactive Naver/Kakao
-// map inline, register at ncloud.com or developers.kakao.com and swap
-// this iframe for their JS SDK driven by a CLIENT_ID env var.
-const osmEmbedUrl = (() => {
-  const dLng = 0.0042;
-  const dLat = 0.0026;
-  const bbox = [
-    OFFICE.lng - dLng,
-    OFFICE.lat - dLat,
-    OFFICE.lng + dLng,
-    OFFICE.lat + dLat,
-  ].join("%2C");
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${OFFICE.lat}%2C${OFFICE.lng}`;
-})();
+// Road-name address — Korean geocoders (Naver, Kakao, Google) all resolve
+// this to the exact building, so we don't depend on approximate lat/lng.
+// The values in OFFICE.lat/lng are kept for structured-data only.
+const SEARCH_QUERY = `${OFFICE.addressRegion} ${OFFICE.addressLocality} ${OFFICE.streetAddress.split(",")[0]}`;
+//   → "서울특별시 서초구 서초대로55길 3"
 
-// Korean visitors expect Naver/Kakao for actual directions, so we promote
-// Naver as the primary CTA and keep the rest as secondary chips. All URLs
-// are coordinate-based so each pin lands on the exact building.
+// Inline embed = Google Maps. Their classic `output=embed` URL is the only
+// no-auth iframe that renders a "real" coloured street map (Naver/Kakao
+// block iframe via X-Frame-Options; OSM is allowed but visually plain).
+// To swap in a real Naver/Kakao map later, register at ncloud.com or
+// developers.kakao.com and replace this iframe with their JS SDK.
+const googleEmbedUrl =
+  `https://maps.google.com/maps?q=${encodeURIComponent(SEARCH_QUERY)}` +
+  `&t=m&z=17&ie=UTF8&hl=ko&output=embed`;
+
+// Deep links use the same address string — each service's geocoder will
+// pin the precise building (was previously coordinate-based with stale
+// lat/lng, which caused all three pins to land in the wrong spot).
 const primaryMapLink = {
   label: "네이버지도에서 정확한 위치 보기",
-  href: `https://map.naver.com/p/search/${encodeURIComponent(
-    OFFICE.name
-  )}?c=15.00,0,0,0,dh&p=${OFFICE.lng},${OFFICE.lat},15`,
+  href: `https://map.naver.com/p/search/${encodeURIComponent(SEARCH_QUERY)}`,
 };
 
 const secondaryMapLinks = [
   {
     label: "카카오맵",
-    // Kakao's documented deep link: /link/map/<name>,<lat>,<lng>
-    href: `https://map.kakao.com/link/map/${encodeURIComponent(
-      OFFICE.name
-    )},${OFFICE.lat},${OFFICE.lng}`,
+    href: `https://map.kakao.com/?q=${encodeURIComponent(SEARCH_QUERY)}`,
   },
   {
     label: "구글맵",
-    href: `https://www.google.com/maps?q=${OFFICE.lat},${OFFICE.lng}`,
+    href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      SEARCH_QUERY
+    )}`,
   },
 ];
 
@@ -126,7 +121,7 @@ export default function VisitPage() {
               <div className="mt-3 aspect-[4/3] w-full overflow-hidden rounded-md border border-paper-3 bg-paper-2 relative">
                 <iframe
                   title={`${OFFICE.addressShort} 지도`}
-                  src={osmEmbedUrl}
+                  src={googleEmbedUrl}
                   className="absolute inset-0 h-full w-full"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
