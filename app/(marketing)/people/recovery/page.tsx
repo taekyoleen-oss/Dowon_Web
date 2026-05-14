@@ -1,13 +1,19 @@
 import { Container } from "@/components/layout/container";
 import { Eyebrow, Button } from "@/components/ui";
+import { StaffCard } from "@/components/people/staff-card";
+import { recoveryTeam } from "@/lib/data/staff";
 
-export const metadata = { title: "채권회수팀" };
+export const metadata = {
+  title: "채권회수팀",
+  description:
+    "법무법인 도원 채권회수팀 — 판결 이후 재산조회·압류·추심까지 실제 회수 절차를 동일 팀에서 끌어갑니다.",
+};
 
 const services = [
   { no: "01", title: "재산조회·은닉 추적", body: "공공·민간 자료원 활용, 명의·관계인 자산 추적." },
-  { no: "02", title: "강제집행·압류", body: "부동산·예금·채권·동산 압류 절차 진행." },
-  { no: "03", title: "추심·전부 명령", body: "법원 결정 후 실제 회수까지 절차 일관 수행." },
-  { no: "04", title: "회수 리포트", body: "분기별 회수 진척 보고 (보험사 자문 한정)." },
+  { no: "02", title: "강제집행·압류",     body: "부동산·예금·채권·동산 압류 절차 진행." },
+  { no: "03", title: "추심·전부 명령",    body: "법원 결정 후 실제 회수까지 절차 일관 수행." },
+  { no: "04", title: "회수 리포트",       body: "분기별 회수 진척 보고 (보험사 자문 한정)." },
 ];
 
 export default function RecoveryPage() {
@@ -29,7 +35,29 @@ export default function RecoveryPage() {
 
       <section className="section-y bg-paper-2">
         <Container size="wide">
-          <Eyebrow index={2}>SERVICES</Eyebrow>
+          <Eyebrow index={2}>TEAM · 팀 구성</Eyebrow>
+          <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">
+            팀 구성 <span className="font-mono text-h3 text-ink-mute">({recoveryTeam.length}명)</span>
+          </h2>
+          <p className="mt-5 max-w-[42em] font-serif-ko text-body-lg text-ink-soft leading-base">
+            손해보험사 보상·구상 실무 출신과 신용·금융 회사 채권 추심 경력을 가진
+            실무진으로 구성됩니다. 보험사 자문계약 외에도 기성 판결 보유 의뢰인의
+            회수 단계 위임을 별도로 받습니다.
+          </p>
+
+          <ul className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {recoveryTeam.map((m) => (
+              <li key={m.slug}>
+                <StaffCard member={m} />
+              </li>
+            ))}
+          </ul>
+        </Container>
+      </section>
+
+      <section className="section-y">
+        <Container size="wide">
+          <Eyebrow index={3}>SERVICES</Eyebrow>
           <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">서비스 범위</h2>
 
           <ul className="mt-12 grid gap-px bg-paper-3 border border-paper-3 md:grid-cols-2">
@@ -44,7 +72,7 @@ export default function RecoveryPage() {
         </Container>
       </section>
 
-      <section className="section-y">
+      <section className="section-y bg-paper-2">
         <Container size="base" className="text-center">
           <Eyebrow>GET STARTED</Eyebrow>
           <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">기성 판결 보유 의뢰</h2>
