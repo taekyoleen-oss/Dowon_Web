@@ -52,8 +52,8 @@ export function Footer() {
         <div className="grid gap-12 lg:grid-cols-[1.4fr_repeat(4,1fr)]">
           <div>
             <Image
-              src="/brand/logo.png"
-              alt="법무법인 도원"
+              src="/brand/logo-footer.png"
+              alt="법무법인 도원 — DOWON LAW FIRM"
               width={206}
               height={66}
               className="h-12 w-auto"

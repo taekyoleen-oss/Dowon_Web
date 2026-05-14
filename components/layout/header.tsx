@@ -223,10 +223,10 @@ export function Header() {
         <Container size="wide" className="flex h-16 items-center justify-between lg:h-20">
           <Link href="/" className="flex items-center" aria-label="법무법인 도원 홈">
             <Image
-              src="/brand/logo-dark.png"
-              alt="법무법인 도원"
-              width={250}
-              height={70}
+              src="/brand/logo-header.png"
+              alt="법무법인 도원 — DOWON LAW FIRM"
+              width={353}
+              height={98}
               priority
               className="h-9 w-auto lg:h-11"
             />
