@@ -1,7 +1,50 @@
 import { Container } from "@/components/layout/container";
 import { Eyebrow, Button } from "@/components/ui";
+import { MapPin, ExternalLink } from "lucide-react";
 
 export const metadata = { title: "오시는 길" };
+
+// Office location — 서울특별시 서초구 서초대로55길 3, 애니빌딩.
+// Approximate coordinates (around 양재역). Adjust here when verified.
+const OFFICE = {
+  address: "서울특별시 서초구 서초대로55길 3, 애니빌딩 4-5층",
+  addressShort: "서초구 서초대로55길 3",
+  query: "법무법인 도원 (서초대로55길 3)",
+  lat: 37.4862,
+  lng: 127.0312,
+};
+
+// OpenStreetMap embed — no API key required, decent quality, interactive.
+// bbox = lng-0.004,lat-0.0025,lng+0.004,lat+0.0025 → ~500m view
+const osmEmbedUrl = (() => {
+  const dLng = 0.004;
+  const dLat = 0.0025;
+  const bbox = [
+    OFFICE.lng - dLng,
+    OFFICE.lat - dLat,
+    OFFICE.lng + dLng,
+    OFFICE.lat + dLat,
+  ].join("%2C");
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${OFFICE.lat}%2C${OFFICE.lng}`;
+})();
+
+// Native-app deep links — Korean users overwhelmingly prefer these.
+const mapLinks = [
+  {
+    label: "카카오맵",
+    href: `https://map.kakao.com/?q=${encodeURIComponent(OFFICE.query)}`,
+  },
+  {
+    label: "네이버지도",
+    href: `https://map.naver.com/v5/search/${encodeURIComponent(OFFICE.query)}`,
+  },
+  {
+    label: "구글맵",
+    href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      OFFICE.address
+    )}`,
+  },
+];
 
 const directions = [
   {
@@ -80,13 +123,38 @@ export default function VisitPage() {
 
             <div className="lg:col-span-7">
               <p className="label-mono">지도</p>
-              <div className="mt-3 aspect-[4/3] w-full bg-paper-2 border border-paper-3 rounded-md flex items-center justify-center">
-                <p className="font-mono text-[12px] uppercase tracking-label text-ink-mute text-center px-6">
-                  Map placeholder<br />
-                  <span className="block mt-2 normal-case tracking-normal text-ink-soft font-serif-ko">
-                    지도는 Phase 1 Week 2 후반에 Kakao/Naver Map으로 교체됩니다.
+              <div className="mt-3 aspect-[4/3] w-full overflow-hidden rounded-md border border-paper-3 bg-paper-2 relative">
+                <iframe
+                  title={`${OFFICE.addressShort} 지도`}
+                  src={osmEmbedUrl}
+                  className="absolute inset-0 h-full w-full"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+                <div className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-sm bg-paper/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
+                  <MapPin size={13} aria-hidden className="text-gold-deep" />
+                  <span className="font-serif-ko text-[13px] text-ink">
+                    {OFFICE.addressShort}
                   </span>
-                </p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="font-mono text-[11px] uppercase tracking-label text-ink-mute self-center mr-1">
+                  앱으로 열기 →
+                </span>
+                {mapLinks.map((m) => (
+                  <a
+                    key={m.label}
+                    href={m.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-sm border border-paper-3 bg-paper px-3 py-2 font-sans-ko text-[13px] text-ink hover:border-ink hover:bg-paper-2 transition-colors"
+                  >
+                    {m.label}
+                    <ExternalLink size={11} aria-hidden className="text-ink-mute" />
+                  </a>
+                ))}
               </div>
             </div>
           </div>
