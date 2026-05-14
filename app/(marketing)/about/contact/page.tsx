@@ -1,21 +1,9 @@
 import { Container } from "@/components/layout/container";
 import { Eyebrow, Button } from "@/components/ui";
 import { MapPin, ExternalLink } from "lucide-react";
+import { OFFICE } from "@/lib/data/office";
 
 export const metadata = { title: "오시는 길" };
-
-// Office location — 서울특별시 서초구 서초대로55길 3, 애니빌딩.
-// VERIFY: coordinates approximated for 애니빌딩 entrance. To pin exactly,
-// open https://map.kakao.com/, find the building, right-click → "좌표복사"
-// and paste the values into lat/lng below. All map services (embed +
-// deep links) read from this single source.
-const OFFICE = {
-  name: "법무법인 도원",
-  address: "서울특별시 서초구 서초대로55길 3, 애니빌딩 4-5층",
-  addressShort: "서초구 서초대로55길 3",
-  lat: 37.4862,
-  lng: 127.0312,
-};
 
 // Default visible map = Naver. Mobile search URL is iframe-friendlier
 // than the desktop variant. Falls back to a search-by-name view; the
