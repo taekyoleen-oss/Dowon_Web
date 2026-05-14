@@ -21,6 +21,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/people/fellows",
     "/people/recovery",
     "/people/management",
+    "/people/group",
     "/centers/investigation",
     "/centers/medical",
     "/library",
@@ -35,6 +36,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/contact/medical",
     "/contact/personal",
     "/tools/triage",
+    "/tools/intake",
+    "/tools/coverage-check",
     "/tools/subrogation-check",
   ];
 

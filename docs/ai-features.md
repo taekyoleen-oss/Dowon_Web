@@ -14,8 +14,9 @@
 | **7** | 변호사 매칭 추천 | 전 페르소나 (보조) | (다른 도구에 통합) | `/api/ai/lawyer-match` | 가중치 휴리스틱 | — |
 | **8** | 주간 뉴스레터 cron | 보험사·기업·일반 구독자 | (백그라운드) | `/api/cron/newsletter` | Resend (콘텐츠는 #6 결과) | 검수된 콘텐츠만 발송 |
 | **10** | 사건 정보 정리 챗봇 (Intake) ⭐ | 개인 의뢰자 | `/tools/intake` | `/api/ai/intake` + `/api/ai/intake/confirm` | Claude Sonnet 4.6 | 사용자 확정 게이트 · 9-슬롯 사실 수집만 |
+| **11** | 보험금 가능성 셀프체크 (Coverage Check) ⭐ | 개인 보험금 청구자 | `/tools/coverage-check` | `/api/ai/coverage-check` | Claude Sonnet 4.6 (PDF 직접) | 동의 게이트 · 단정 금지 · "후보" 표현만 · heavy rate limit |
 
-> ⭐ AI #10 (Intake)는 PRD 원본 #9(음성 상담)가 Phase IV 검토 항목으로 미뤄진 자리에 추가된 신규 도구입니다. 변호사법 §23 위험이 낮은 사실 수집·확인 기반.
+> ⭐ AI #10 (Intake)·AI #11 (Coverage Check)은 PRD 원본 #9(음성 상담)가 Phase IV 검토 항목으로 미뤄진 자리에 추가된 신규 도구입니다. 둘 다 변호사법 §23 위험이 낮은 사실 수집·매칭 기반.
 
 ---
 
