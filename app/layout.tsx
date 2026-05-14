@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { cormorant, notoSerifKr, pretendard, jetbrainsMono } from "./fonts";
+import { Suspense } from "react";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { MobileFloatingCta } from "@/components/layout/mobile-floating-cta";
+import { PostHogInit } from "@/components/analytics/posthog-init";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
@@ -53,6 +55,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen bg-paper text-ink antialiased pb-[60px] lg:pb-0">
+        <Suspense fallback={null}>
+          <PostHogInit />
+        </Suspense>
         <Header />
         <main id="main">{children}</main>
         <Footer />
