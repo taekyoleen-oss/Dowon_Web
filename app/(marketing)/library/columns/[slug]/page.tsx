@@ -4,6 +4,8 @@ import { Container } from "@/components/layout/container";
 import { Eyebrow, Button, Tag } from "@/components/ui";
 import { libraryItems, getLibraryItemBySlug } from "@/lib/data/library";
 import { getLawyerBySlug, practiceAreaLabels } from "@/lib/data/lawyers";
+import { JsonLd } from "@/components/seo/json-ld";
+import { articleSchema } from "@/lib/seo/schemas";
 
 export function generateStaticParams() {
   return libraryItems.filter((it) => it.type === "column").map((it) => ({ slug: it.slug }));
@@ -23,6 +25,15 @@ export default function ColumnDetailPage({ params }: { params: { slug: string } 
 
   return (
     <article className="section-y">
+      <JsonLd
+        data={articleSchema({
+          headline: item.title,
+          description: item.excerpt,
+          url: `/library/columns/${item.slug}`,
+          datePublished: item.publishedAt,
+          authorName: author?.nameKo,
+        })}
+      />
       <Container size="narrow">
         <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute mb-6">
           <Link href="/library/columns" className="hover:text-ink">← 칼럼 목록</Link>

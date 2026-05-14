@@ -4,6 +4,8 @@ import { Container } from "@/components/layout/container";
 import { Eyebrow, Button, Tag } from "@/components/ui";
 import { LawyerPhoto } from "@/components/lawyer/lawyer-photo";
 import { LibraryCard } from "@/components/library/library-card";
+import { JsonLd } from "@/components/seo/json-ld";
+import { personSchema } from "@/lib/seo/schemas";
 import {
   lawyers,
   getLawyerBySlug,
@@ -45,6 +47,7 @@ export default function LawyerProfilePage({ params }: { params: { slug: string }
 
   return (
     <>
+      <JsonLd data={personSchema(lawyer)} />
       {/* Profile header */}
       <section className="section-y">
         <Container size="wide">
