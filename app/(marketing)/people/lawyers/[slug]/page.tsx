@@ -3,11 +3,13 @@ import Link from "next/link";
 import { Container } from "@/components/layout/container";
 import { Eyebrow, Button, Tag } from "@/components/ui";
 import { LawyerPhoto } from "@/components/lawyer/lawyer-photo";
+import { LibraryCard } from "@/components/library/library-card";
 import {
   lawyers,
   getLawyerBySlug,
   practiceAreaLabels,
 } from "@/lib/data/lawyers";
+import { libraryItems } from "@/lib/data/library";
 
 export function generateStaticParams() {
   return lawyers.map((l) => ({ slug: l.slug }));
@@ -28,6 +30,18 @@ export default function LawyerProfilePage({ params }: { params: { slug: string }
 
   const showSpecial =
     lawyer.specialQualifications && lawyer.specialQualifications.length > 0;
+
+  // Auto-link library: columns where this lawyer is the author, cases where
+  // they're listed in lawyerSlugs. Newest first, capped to keep the section
+  // scannable. Falls back to "still empty" link when there's nothing yet.
+  const relatedColumns = libraryItems
+    .filter((it) => it.type === "column" && it.authorSlug === lawyer.slug)
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+    .slice(0, 4);
+  const relatedCases = libraryItems
+    .filter((it) => it.type === "case" && it.lawyerSlugs?.includes(lawyer.slug))
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+    .slice(0, 4);
 
   return (
     <>
@@ -147,43 +161,69 @@ export default function LawyerProfilePage({ params }: { params: { slug: string }
         </section>
       )}
 
-      {/* Related (placeholders — will be wired up in Phase 1 Week 4) */}
-      <section className="section-y bg-paper-2">
-        <Container size="wide">
-          <div className="grid gap-12 lg:grid-cols-2">
-            <div>
-              <Eyebrow index={5}>RELATED COLUMNS</Eyebrow>
-              <h2 className="mt-4 font-serif-ko text-h2 text-ink font-semibold">
-                {lawyer.nameKo} 변호사의 칼럼
-              </h2>
-              <p className="mt-5 font-serif-ko text-body-lg text-ink-soft leading-base">
-                라이브러리에서 변호사별 칼럼을 자동 연결합니다. (Phase 1 Week 4)
-              </p>
-              <Link
-                href="/library/columns"
-                className="mt-6 inline-flex items-center font-serif-ko text-[15px] text-ink font-semibold border-b border-ink pb-1 hover:text-gold-deep hover:border-gold-deep transition-colors"
-              >
-                라이브러리에서 보기 →
-              </Link>
+      {/* Related — auto-wired from library.ts (authorSlug / lawyerSlugs) */}
+      {(relatedColumns.length > 0 || relatedCases.length > 0) && (
+        <section className="section-y bg-paper-2">
+          <Container size="wide">
+            <div className="grid gap-12 lg:grid-cols-2">
+              <div>
+                <Eyebrow index={5}>RELATED COLUMNS</Eyebrow>
+                <h2 className="mt-4 font-serif-ko text-h2 text-ink font-semibold">
+                  {lawyer.nameKo} 변호사의 칼럼
+                </h2>
+                {relatedColumns.length > 0 ? (
+                  <>
+                    <ul className="mt-8 grid gap-5 sm:grid-cols-2">
+                      {relatedColumns.map((it) => (
+                        <li key={it.slug}>
+                          <LibraryCard item={it} compact />
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      href="/library/columns"
+                      className="mt-6 inline-flex items-center font-serif-ko text-[14px] text-ink font-semibold border-b border-ink pb-0.5 hover:text-gold-deep hover:border-gold-deep transition-colors"
+                    >
+                      모든 칼럼 보기 →
+                    </Link>
+                  </>
+                ) : (
+                  <p className="mt-5 font-serif-ko text-body text-ink-soft leading-base">
+                    등록된 칼럼이 아직 없습니다.
+                  </p>
+                )}
+              </div>
+              <div>
+                <Eyebrow index={6}>RELATED CASES</Eyebrow>
+                <h2 className="mt-4 font-serif-ko text-h2 text-ink font-semibold">
+                  관련 판례
+                </h2>
+                {relatedCases.length > 0 ? (
+                  <>
+                    <ul className="mt-8 grid gap-5 sm:grid-cols-2">
+                      {relatedCases.map((it) => (
+                        <li key={it.slug}>
+                          <LibraryCard item={it} compact />
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      href="/library/cases"
+                      className="mt-6 inline-flex items-center font-serif-ko text-[14px] text-ink font-semibold border-b border-ink pb-0.5 hover:text-gold-deep hover:border-gold-deep transition-colors"
+                    >
+                      모든 판례 보기 →
+                    </Link>
+                  </>
+                ) : (
+                  <p className="mt-5 font-serif-ko text-body text-ink-soft leading-base">
+                    등록된 대표 판례가 아직 없습니다.
+                  </p>
+                )}
+              </div>
             </div>
-            <div>
-              <Eyebrow index={6}>RELATED CASES</Eyebrow>
-              <h2 className="mt-4 font-serif-ko text-h2 text-ink font-semibold">
-                관련 판례
-              </h2>
-              <p className="mt-5 font-serif-ko text-body-lg text-ink-soft leading-base">
-                동일 분야의 판례를 자동 연결합니다.
-              </p>
-              <Link
-                href="/library/cases"
-                className="mt-6 inline-flex items-center font-serif-ko text-[15px] text-ink font-semibold border-b border-ink pb-1 hover:text-gold-deep hover:border-gold-deep transition-colors"
-              >
-                관련 판례 보기 →
-              </Link>
-            </div>
-          </div>
-        </Container>
-      </section>
+          </Container>
+        </section>
+      )}
     </>
   );
 }
