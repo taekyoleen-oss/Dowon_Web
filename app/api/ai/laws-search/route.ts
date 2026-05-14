@@ -6,6 +6,8 @@ import { withAudit } from "@/lib/ai/audit";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
+// Embedding + RPC + audit insert can take a few seconds on cold start.
+export const maxDuration = 30;
 
 /**
  * Focused statute Q&A — only searches legal_provisions (no cases/columns).
@@ -55,43 +57,61 @@ export async function POST(req: Request) {
     });
   }
 
-  const result = await withAudit("laws-search", body, async () => {
-    const qEmbedding = await embed(body.query);
-    const supabase = getServerSupabase();
+  // Wrap the whole pipeline so any failure (embed timeout, RPC error,
+  // audit insert) returns a JSON body. Without this, an uncaught throw
+  // bubbles to Next.js as a 500 with empty body, which the client
+  // sees as "Unexpected end of JSON input".
+  try {
+    const result = await withAudit("laws-search", body, async () => {
+      const qEmbedding = await embed(body.query);
+      const supabase = getServerSupabase();
 
-    // Over-fetch to allow post-filtering by law_name without losing
-    // the requested top_k
-    const fetchN = body.law_name ? body.top_k * 5 : body.top_k * 2;
+      // Over-fetch when filtering by law_name so the filter doesn't
+      // starve the result list to fewer than top_k items.
+      const fetchN = body.law_name ? body.top_k * 5 : body.top_k * 2;
 
-    const rpc = await supabase.rpc("match_legal_provisions", {
-      query_embedding: qEmbedding,
-      match_count: Math.min(fetchN, 50),
+      const rpc = await supabase.rpc("match_legal_provisions", {
+        query_embedding: qEmbedding,
+        match_count: Math.min(fetchN, 50),
+      });
+      if (rpc.error) {
+        throw new Error(`match_legal_provisions failed: ${rpc.error.message}`);
+      }
+
+      let rows = (rpc.data ?? []) as LawRow[];
+      if (body.law_name) {
+        rows = rows.filter((r) => r.law_name === body.law_name);
+      }
+      rows = rows
+        .filter((r) => typeof r.similarity === "number" && r.similarity > 0.2)
+        .slice(0, body.top_k);
+
+      const results = rows.map((r) => ({
+        id: r.id,
+        law_name: r.law_name,
+        article_number: r.article_number,
+        article_title: r.article_title ?? "",
+        article_body: r.article_body,
+        enforcement_date: r.enforcement_date,
+        similarity: Number(r.similarity?.toFixed(3) ?? 0),
+        source_url: r.source_url,
+      }));
+
+      return { output: { results } };
     });
-    if (rpc.error || !rpc.data) {
-      return { output: { results: [] } };
-    }
 
-    let rows = rpc.data as LawRow[];
-    if (body.law_name) {
-      rows = rows.filter((r) => r.law_name === body.law_name);
-    }
-    rows = rows
-      .filter((r) => typeof r.similarity === "number" && r.similarity > 0.2)
-      .slice(0, body.top_k);
-
-    const results = rows.map((r) => ({
-      id: r.id,
-      law_name: r.law_name,
-      article_number: r.article_number,
-      article_title: r.article_title ?? "",
-      article_body: r.article_body,
-      enforcement_date: r.enforcement_date,
-      similarity: Number(r.similarity?.toFixed(3) ?? 0),
-      source_url: r.source_url,
-    }));
-
-    return { output: { results } };
-  });
-
-  return NextResponse.json(result);
+    return NextResponse.json(result);
+  } catch (e) {
+    console.error("[laws-search] failed:", e);
+    return NextResponse.json(
+      {
+        results: [],
+        error:
+          e instanceof Error
+            ? e.message
+            : "검색 중 알 수 없는 오류가 발생했습니다.",
+      },
+      { status: 500 }
+    );
+  }
 }

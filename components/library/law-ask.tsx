@@ -44,9 +44,28 @@ export function LawAsk({ lawNames }: LawAskProps) {
             ...(submitted.law ? { law_name: submitted.law } : {}),
           }),
         });
-        const data = await res.json();
+
+        // Some failure modes return an empty body or HTML error page
+        // (function crash, 504 timeout). Read as text first so we can
+        // surface a usable message instead of a parser stack trace.
+        const text = await res.text();
+        let data: { results?: LawArticle[]; error?: string } = {};
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = {
+              error: res.ok
+                ? "서버 응답을 해석할 수 없습니다."
+                : `${res.status} ${res.statusText || ""}`.trim(),
+            };
+          }
+        } else if (!res.ok) {
+          data = { error: `${res.status} ${res.statusText || ""}`.trim() };
+        }
+
         if (cancelled) return;
-        if (!res.ok) {
+        if (!res.ok || data.error) {
           setError(data.error ?? "검색 중 오류가 발생했습니다.");
           setResults([]);
         } else {
