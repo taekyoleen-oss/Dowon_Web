@@ -92,3 +92,36 @@ posthog.capture("consultation_submitted", { persona: "personal" });
 | Sentry | sentry.io → Issues | 발생한 에러 + stack trace + 영향 받은 사용자 |
 | Upstash | console.upstash.com → Data Browser | 현재 rate limit 키 + 차단 횟수 |
 | PostHog | us.posthog.com → Insights | 페이지뷰·funnel·세션 리플레이 |
+
+---
+
+## 4. Naver Maps — 진짜 네이버 지도 임베드 (선택)
+
+`/about/contact` 페이지의 인라인 지도를 Google Maps 대신 진짜 Naver Map으로 띄우기. 한국 의뢰인에게 가장 익숙한 형태.
+
+> Naver는 외부 도메인에서 무인증 iframe 임베드를 차단하므로, 진짜 Naver Map을 인라인으로 띄우려면 NCP(Naver Cloud Platform)의 무료 Client ID가 필요합니다. 키 없으면 자동으로 Google Maps iframe으로 fallback.
+
+### 키 발급 (~5분)
+1. https://www.ncloud.com → 회원가입 (네이버 아이디로 SSO 가능)
+2. Console → **AI·Application Service** → **Maps** → **Application 등록**
+3. **Service** 항목에서 **Web Dynamic Map** 체크
+4. **Web 서비스 URL** 에 도메인 추가 (한 줄에 하나씩):
+   ```
+   http://localhost:3000
+   https://www.dowonlaw.com    # 운영 도메인 (있으면)
+   ```
+5. 등록 후 Application 상세 → **Client ID** 복사 (예: `abc1d2e3f4`)
+
+### `.env.local` 추가
+```env
+NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=abc1d2e3f4
+```
+
+### 동작 확인
+- dev 재시작 후 `/about/contact` → 인라인 지도가 네이버 컬러 톤 + 한국어 라벨 + 줌 컨트롤로 표시
+- 키가 비어있거나 잘못되면 자동으로 Google Maps iframe으로 fallback (페이지가 깨지지 않음)
+- 코드 위치: `components/contact/naver-map.tsx` (SDK 로더), `app/(marketing)/about/contact/page.tsx` (env 분기)
+
+### 정확한 위치가 안 잡힐 때
+- `lib/data/office.ts` 의 `OFFICE.lat` / `OFFICE.lng` 두 줄만 갱신하면 끝
+- map.kakao.com 에서 건물 우클릭 → "좌표복사" → 위경도 형식으로 복사 → 값 교체

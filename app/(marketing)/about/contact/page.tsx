@@ -2,8 +2,14 @@ import { Container } from "@/components/layout/container";
 import { Eyebrow, Button } from "@/components/ui";
 import { MapPin, ExternalLink } from "lucide-react";
 import { OFFICE } from "@/lib/data/office";
+import { NaverMap } from "@/components/contact/naver-map";
 
 export const metadata = { title: "오시는 길" };
+
+// Real Naver Map renders when this env var is set (free key from
+// ncloud.com — see components/contact/naver-map.tsx for setup steps).
+// Otherwise the iframe below falls back to Google Maps.
+const NAVER_CLIENT_ID = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
 
 // Road-name address — Korean geocoders (Naver, Kakao, Google) all resolve
 // this to the exact building, so we don't depend on approximate lat/lng.
@@ -119,13 +125,17 @@ export default function VisitPage() {
             <div className="lg:col-span-7">
               <p className="label-mono">지도</p>
               <div className="mt-3 aspect-[4/3] w-full overflow-hidden rounded-md border border-paper-3 bg-paper-2 relative">
-                <iframe
-                  title={`${OFFICE.addressShort} 지도`}
-                  src={googleEmbedUrl}
-                  className="absolute inset-0 h-full w-full"
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
+                {NAVER_CLIENT_ID ? (
+                  <NaverMap clientId={NAVER_CLIENT_ID} />
+                ) : (
+                  <iframe
+                    title={`${OFFICE.addressShort} 지도`}
+                    src={googleEmbedUrl}
+                    className="absolute inset-0 h-full w-full"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                )}
                 <div className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-sm bg-paper/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
                   <MapPin size={13} aria-hidden className="text-gold-deep" />
                   <span className="font-serif-ko text-[13px] text-ink">
