@@ -10,13 +10,13 @@
 | **3** | 약관 분석 (PDF) | 보험사 · 도원 내부 | `/tools/policy-reader` | `/api/ai/policy-analyze` | Claude (PDF 직접) | 어드민 인증 · 24h 자동 삭제 |
 | **4** | 의무기록 사전 분석 | 도원 내부 | `/admin/medical-analysis` | `/api/ai/medical-analyze` | Claude (PDF 직접) | 어드민 인증 · `DOWON_DISABLE_EXTERNAL_AI` 가드 |
 | **5** | 구상 가능성 자가진단 | 보험사 · 손해사정사 | `/tools/subrogation-check` | `/api/ai/subrogation-check` | Claude | 단정 금지 · "가능성" 표현 강제 |
-| **6** | 판결 자동 요약 cron | 내부 운영 | (백그라운드) | `/api/cron/harvest-cases` | Claude | 변호사 검수 큐 통과해야 발행 |
 | **7** | 변호사 매칭 추천 | 전 페르소나 (보조) | (다른 도구에 통합) | `/api/ai/lawyer-match` | 가중치 휴리스틱 | — |
-| **8** | 주간 뉴스레터 cron | 보험사·기업·일반 구독자 | (백그라운드) | `/api/cron/newsletter` | Resend (콘텐츠는 #6 결과) | 검수된 콘텐츠만 발송 |
 | **10** | 사건 정보 정리 챗봇 (Intake) ⭐ | 개인 의뢰자 | `/tools/intake` | `/api/ai/intake` + `/api/ai/intake/confirm` | Claude Sonnet 4.6 | 사용자 확정 게이트 · 9-슬롯 사실 수집만 |
-| **11** | 보험금 가능성 셀프체크 (Coverage Check) ⭐ | 개인 보험금 청구자 | `/tools/coverage-check` | `/api/ai/coverage-check` | Claude Sonnet 4.6 (PDF 직접) | 동의 게이트 · 단정 금지 · "후보" 표현만 · heavy rate limit |
+| **11** | 보험금 가능성 셀프체크 (Coverage Check) ⭐ | 개인 보험금 청구자 | `/tools/coverage-check` | `/api/ai/coverage-check` | Claude Sonnet 4.6 (PDF 직접) | 동의 게이트 · 단정 금지 · "후보" 표현만 · 멀티턴 follow-up 지원 |
 
 > ⭐ AI #10 (Intake)·AI #11 (Coverage Check)은 PRD 원본 #9(음성 상담)가 Phase IV 검토 항목으로 미뤄진 자리에 추가된 신규 도구입니다. 둘 다 변호사법 §23 위험이 낮은 사실 수집·매칭 기반.
+
+> 보류 항목 (개인 고객 대상 사이트에서 우선순위 낮음 · 차기 개발): AI #6 판결 자동 요약 cron, AI #8 주간 뉴스레터 cron. 관련 DB 테이블(`newsletter_subscribers`, `cases.ai_generated`)은 차기 재도입을 위해 스키마는 유지.
 
 ---
 
@@ -49,8 +49,6 @@ Slack + Resend 알림 → 도원 변호사 응대
 - **보험사** → `/tools/subrogation-check` (AI #5) → `/contact/insurer`
 - **약관 검토 필요** → 인증 어드민/보험사 → `/tools/policy-reader` (AI #3)
 - **의료 사건 내부 검토** → `/admin/medical-analysis` (AI #4)
-- **콘텐츠 자동 보충** → 매일 02:00 KST `/api/cron/harvest-cases` (AI #6) → 검수 → `/library`
-- **뉴스레터** → 매주 월 09:00 KST `/api/cron/newsletter` (AI #8)
 
 ---
 

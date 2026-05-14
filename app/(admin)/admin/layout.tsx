@@ -12,7 +12,6 @@ const nav = [
   { href: "/admin/cases",          label: "판례 관리" },
   { href: "/admin/columns",        label: "칼럼 관리" },
   { href: "/admin/lawyers",        label: "변호사 관리" },
-  { href: "/admin/ai-queue",       label: "AI 초안 큐" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

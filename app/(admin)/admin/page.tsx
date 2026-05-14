@@ -7,22 +7,19 @@ async function getCounts() {
   if (!hasSupabaseConfig()) {
     return {
       newConsultations: 0,
-      pendingAi: 0,
       publishedCases: 0,
       publishedColumns: 0,
       stub: true,
     };
   }
   const supabase = getServerSupabase();
-  const [c, ai, cases, columns] = await Promise.all([
+  const [c, cases, columns] = await Promise.all([
     supabase.from("consultation_requests").select("id", { count: "exact", head: true }).eq("status", "new"),
-    supabase.from("cases").select("id", { count: "exact", head: true }).eq("is_published", false).eq("ai_generated", true),
     supabase.from("cases").select("id", { count: "exact", head: true }).eq("is_published", true),
     supabase.from("columns").select("id", { count: "exact", head: true }).eq("is_published", true),
   ]);
   return {
     newConsultations: c.count ?? 0,
-    pendingAi: ai.count ?? 0,
     publishedCases: cases.count ?? 0,
     publishedColumns: columns.count ?? 0,
     stub: false,
@@ -33,7 +30,6 @@ export default async function AdminDashboard() {
   const counts = await getCounts();
   const cards = [
     { label: "신규 상담 신청", value: counts.newConsultations, href: "/admin/consultations" },
-    { label: "AI 초안 검수 대기", value: counts.pendingAi, href: "/admin/ai-queue" },
     { label: "발행된 판례",     value: counts.publishedCases, href: "/admin/cases" },
     { label: "발행된 칼럼",     value: counts.publishedColumns, href: "/admin/columns" },
   ];

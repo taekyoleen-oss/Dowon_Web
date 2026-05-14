@@ -59,10 +59,9 @@ See `.env.local.example` for the full list. Minimum set for local dev:
 app/
   (marketing)/      Public pages — home, about, practice, people, library, contact
   (tools)/tools/    AI tools — triage, subrogation-check, policy-reader
-  (admin)/admin/    Lawyer-only CMS + AI queue (middleware-gated)
+  (admin)/admin/    Lawyer-only CMS (middleware-gated)
   api/
-    ai/             Triage, library-search, subrogation, lawyer-match, policy/medical analyze
-    cron/           Daily case harvest, weekly newsletter (Vercel Cron)
+    ai/             Triage, intake, coverage-check, library-search, subrogation, lawyer-match, policy/medical analyze
     admin/          Logout
 components/
   layout/           Header, Footer, Container
@@ -86,11 +85,10 @@ scripts/
 - **Phase 0** — Scaffolding (done)
 - **Phase 1** — Static site (done)
 - **Phase 2** — AI external tools: triage, semantic search, subrogation, lawyer match (done)
-- **Phase 3** — Admin CMS, policy/medical analyzers, daily harvest cron, weekly newsletter (done)
-- **Phase 4** — Ops & growth (analytics, A/B, voice AI exploration)
+- **Phase 3** — Admin CMS, policy/medical analyzers, AI intake + coverage-check (done)
+- **Phase 4** — Ops & growth (analytics, A/B, voice AI exploration). Daily case harvest cron (AI #6) and weekly newsletter (AI #8) deferred — schema retained for future re-introduction.
 
 ## Legal
 
 All AI-facing surfaces include the disclaimer at `components/ai/legal-disclaimer.tsx`
-per PRD §9.1 (변호사법 제23조). External content is gated by lawyer review
-(`/admin/ai-queue`) before publication.
+per PRD §9.1 (변호사법 제23조).

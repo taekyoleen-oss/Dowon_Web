@@ -44,19 +44,8 @@
 
 ## 4. Cron 검증
 
-`Project → Settings → Cron Jobs` 에 자동으로 두 작업이 보입니다:
-
-| 경로 | 스케줄 (UTC) | 한국시간 | 용도 |
-|---|---|---|---|
-| `/api/cron/harvest-cases` | `0 17 * * *` | 매일 02:00 KST | 신규 판례 수집 (AI #6) |
-| `/api/cron/newsletter` | `0 0 * * 1` | 월요일 09:00 KST | 주간 뉴스레터 (AI #8) |
-
-Vercel은 `CRON_SECRET` env 변수가 있으면 `Authorization: Bearer <CRON_SECRET>` 헤더를 자동으로 부착해 호출합니다. 수동 검증:
-
-```bash
-curl -H "Authorization: Bearer $CRON_SECRET" \
-  https://dowon-web.vercel.app/api/cron/harvest-cases
-```
+현재 등록된 cron 작업 없음. (AI #6 판결 자동 요약·AI #8 뉴스레터는 차기 개발로 보류.)
+재도입 시 `vercel.json` 의 `crons` 배열에 추가하면 자동 등록됩니다.
 
 ## 5. 도메인 연결 (선택)
 
@@ -72,7 +61,6 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 |---|---|
 | 빌드 로그 | Vercel Deployments |
 | 런타임 로그 | Vercel Functions → Logs |
-| Cron 실행 기록 | Vercel Cron Jobs → 각 작업 클릭 |
 | 상담 신청 | `/admin/consultations` (DB 직접 확인 가능) |
 | AI 감사 로그 | Supabase `ai_audit_logs` 테이블 |
 
@@ -85,4 +73,3 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 - [ ] `/tools/triage` 챗봇 한국어 응답
 - [ ] `/contact/personal` 폼 제출 → Supabase `consultation_requests` row 생성
 - [ ] `/admin` → 화이트리스트 외 이메일 차단 / 화이트리스트 이메일 진입
-- [ ] Cron 첫 야간 실행 후 `/admin/ai-queue` 채워짐 (또는 Supabase에서 직접 확인)
