@@ -5,24 +5,34 @@ import { OFFICE } from "@/lib/data/office";
 
 export const metadata = { title: "오시는 길" };
 
-// Default visible map = Naver. Mobile search URL is iframe-friendlier
-// than the desktop variant. Falls back to a search-by-name view; the
-// marker appears once the page renders.
-const naverEmbedUrl =
-  `https://m.map.naver.com/search2/search.naver?query=${encodeURIComponent(
-    OFFICE.name + " " + OFFICE.addressShort
-  )}`;
+// Inline embed = OpenStreetMap (only no-auth option that allows iframe).
+// Naver Map and Kakao Map both set X-Frame-Options that block iframe
+// embedding from external domains. To get a real interactive Naver/Kakao
+// map inline, register at ncloud.com or developers.kakao.com and swap
+// this iframe for their JS SDK driven by a CLIENT_ID env var.
+const osmEmbedUrl = (() => {
+  const dLng = 0.0042;
+  const dLat = 0.0026;
+  const bbox = [
+    OFFICE.lng - dLng,
+    OFFICE.lat - dLat,
+    OFFICE.lng + dLng,
+    OFFICE.lat + dLat,
+  ].join("%2C");
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${OFFICE.lat}%2C${OFFICE.lng}`;
+})();
 
-// Native-app deep links — all coordinate-based so each service pins the
-// exact building rather than fuzzy-searching by name.
-const mapLinks = [
-  {
-    label: "네이버지도",
-    // p=<lng>,<lat>,<zoom> centers the desktop map on the precise point.
-    href: `https://map.naver.com/p/search/${encodeURIComponent(
-      OFFICE.name
-    )}?c=15.00,0,0,0,dh&p=${OFFICE.lng},${OFFICE.lat},15`,
-  },
+// Korean visitors expect Naver/Kakao for actual directions, so we promote
+// Naver as the primary CTA and keep the rest as secondary chips. All URLs
+// are coordinate-based so each pin lands on the exact building.
+const primaryMapLink = {
+  label: "네이버지도에서 정확한 위치 보기",
+  href: `https://map.naver.com/p/search/${encodeURIComponent(
+    OFFICE.name
+  )}?c=15.00,0,0,0,dh&p=${OFFICE.lng},${OFFICE.lat},15`,
+};
+
+const secondaryMapLinks = [
   {
     label: "카카오맵",
     // Kakao's documented deep link: /link/map/<name>,<lat>,<lng>
@@ -115,8 +125,8 @@ export default function VisitPage() {
               <p className="label-mono">지도</p>
               <div className="mt-3 aspect-[4/3] w-full overflow-hidden rounded-md border border-paper-3 bg-paper-2 relative">
                 <iframe
-                  title={`${OFFICE.addressShort} 지도 — 네이버지도`}
-                  src={naverEmbedUrl}
+                  title={`${OFFICE.addressShort} 지도`}
+                  src={osmEmbedUrl}
                   className="absolute inset-0 h-full w-full"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
@@ -129,11 +139,24 @@ export default function VisitPage() {
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="font-mono text-[11px] uppercase tracking-label text-ink-mute self-center mr-1">
-                  앱으로 열기 →
+              {/* Primary CTA — Naver is the de-facto map for Korean users */}
+              <a
+                href={primaryMapLink.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex w-full items-center justify-between gap-2 rounded-sm bg-ink px-4 py-3 font-sans-ko text-[14px] font-medium text-paper hover:bg-night transition-colors"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <MapPin size={14} aria-hidden /> {primaryMapLink.label}
                 </span>
-                {mapLinks.map((m) => (
+                <ExternalLink size={13} aria-hidden className="text-paper-3" />
+              </a>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="self-center mr-1 font-mono text-[11px] uppercase tracking-label text-ink-mute">
+                  다른 지도 →
+                </span>
+                {secondaryMapLinks.map((m) => (
                   <a
                     key={m.label}
                     href={m.href}
