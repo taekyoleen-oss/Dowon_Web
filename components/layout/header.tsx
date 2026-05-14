@@ -57,11 +57,11 @@ const navItems: NavItem[] = [
     label: "라이브러리",
     href: "/library",
     children: [
-      { label: "전체",          href: "/library" },
-      { label: "판례",          href: "/library/cases" },
-      { label: "칼럼",          href: "/library/columns" },
-      { label: "강의·미디어",   href: "/library/media" },
-      { label: "AI 의미 검색",  href: "/library/search" },
+      { label: "판례",                href: "/library/cases" },
+      { label: "칼럼",                href: "/library/columns" },
+      { label: "강의·미디어",         href: "/library/media" },
+      { label: "AI 의미 검색",        href: "/library/search" },
+      { label: "개인정보처리방침",     href: "/privacy" },
     ],
   },
   {

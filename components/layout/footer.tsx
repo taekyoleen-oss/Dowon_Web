@@ -94,8 +94,7 @@ export function Footer() {
             © {year} Dowon Law Firm. All rights reserved.
           </p>
           <ul className="flex flex-wrap gap-6 font-sans-ko text-[12.5px] text-paper-3">
-            <li><Link href="/about/contact" className="hover:text-paper">개인정보 처리방침</Link></li>
-            <li><Link href="/about/contact" className="hover:text-paper">광고 표시</Link></li>
+            <li><Link href="/privacy" className="hover:text-paper">개인정보 처리방침</Link></li>
             <li><Link href="/clients" className="hover:text-paper">고객사·협력사</Link></li>
           </ul>
         </div>
