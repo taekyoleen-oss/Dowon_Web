@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getServerSupabase, hasSupabaseConfig } from "@/lib/supabase/server";
+import { TestNotifyButton } from "@/components/admin/test-notify-button";
 
 export const metadata = { title: "대시보드" };
 
@@ -64,6 +65,23 @@ export default async function AdminDashboard() {
           ⓘ Supabase 미설정 — 위 값은 0으로 표시됩니다. 환경 변수 설정 후 정상 동작합니다.
         </p>
       )}
+
+      {/* Operations — verify the notification pipeline end-to-end */}
+      <div className="mt-14 border-t border-paper-3 pt-8">
+        <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute">
+          OPERATIONS · 점검
+        </p>
+        <h2 className="mt-3 font-serif-ko text-h3 text-ink font-semibold">
+          알림 파이프라인 테스트
+        </h2>
+        <p className="mt-2 max-w-prose font-serif-ko text-[14.5px] text-ink-soft leading-base">
+          실제 상담 폼을 제출하지 않고도 Resend(이메일)·Slack 알림이 제대로 도달하는지 확인할 수 있습니다.
+          현재 설정된 <code className="font-mono text-[12px]">NOTIFY_EMAIL</code> 로 테스트 메일이 발송됩니다.
+        </p>
+        <div className="mt-5">
+          <TestNotifyButton />
+        </div>
+      </div>
     </div>
   );
 }
