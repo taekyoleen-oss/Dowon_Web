@@ -14,8 +14,9 @@ export default function SearchPage() {
         </h1>
         <p className="mt-3 font-serif-ko text-h2 text-ink">자연어로 검색</p>
         <p className="mt-8 max-w-[36em] font-serif-ko text-body-lg text-ink-soft leading-base">
-          판례·칼럼·강의 자료를 자연어 질문으로 탐색합니다. Phase 2에서 시맨틱 검색(AI #2)으로
-          확장되며, 현재는 키워드 매칭 기반으로 동작합니다.
+          도원 라이브러리(칼럼·판례·강의)와 국가법령정보(법령 조문)을 자연어 질문 하나로
+          함께 검색합니다. OpenAI 임베딩 + Claude rerank — "음주운전 면책",
+          "구상권 행사 시점" 같은 자연어로 물어보세요.
         </p>
 
         <div className="mt-14">

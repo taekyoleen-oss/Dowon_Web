@@ -4,6 +4,7 @@ import * as React from "react";
 import { Search, Sparkles } from "lucide-react";
 import { libraryItems } from "@/lib/data/library";
 import { LibraryCard } from "./library-card";
+import { LawResultCard, type LawResult } from "./law-result-card";
 import { cn } from "@/lib/utils";
 
 const sampleQueries = [
@@ -35,6 +36,7 @@ export function LibrarySemanticSearch() {
   const [loading, setLoading] = React.useState(false);
 
   const [apiResults, setApiResults] = React.useState<typeof libraryItems>([]);
+  const [lawResults, setLawResults] = React.useState<LawResult[]>([]);
 
   React.useEffect(() => {
     if (!submitted) return;
@@ -50,14 +52,16 @@ export function LibrarySemanticSearch() {
         if (!res.ok) throw new Error("api");
         const data = await res.json();
         if (cancelled) return;
-        // Map API IDs back to local items (since API references slugs).
+        // Map library results back to LibraryItem by slug.
         const bySlug = new Map(libraryItems.map((it) => [it.slug, it]));
         const items = (data.results ?? [])
           .map((r: { id: string }) => bySlug.get(r.id))
           .filter((x: unknown): x is (typeof libraryItems)[number] => !!x);
         setApiResults(items);
+        // Law articles from match_legal_provisions — no local mapping needed.
+        setLawResults((data.laws ?? []) as LawResult[]);
       } catch {
-        // fall back to local keyword scoring
+        // Fall back to local keyword scoring (laws unavailable offline).
         if (cancelled) return;
         setApiResults(
           libraryItems
@@ -67,6 +71,7 @@ export function LibrarySemanticSearch() {
             .slice(0, 10)
             .map(({ it }) => it)
         );
+        setLawResults([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -134,14 +139,14 @@ export function LibrarySemanticSearch() {
       </div>
 
       <p className="mt-6 font-mono text-[11px] uppercase tracking-label text-gold-deep">
-        ⓘ Phase 2에서 AI 시맨틱 검색으로 전환됩니다. 현재는 키워드 매칭 기반.
+        ⓘ AI 시맨틱 검색 — 칼럼·판례 + 국가법령정보(법령 조문)을 함께 매칭합니다.
       </p>
 
       {loading && (
         <p className="mt-12 font-serif-ko text-body-lg text-ink-soft">검색 중...</p>
       )}
 
-      {!loading && submitted && results.length === 0 && (
+      {!loading && submitted && results.length === 0 && lawResults.length === 0 && (
         <div className="mt-12 border border-dashed border-paper-3 rounded-md p-12 text-center">
           <p className="font-serif-ko text-h3 text-ink-soft">검색 결과가 없습니다.</p>
           <p className="mt-3 font-serif-ko text-body text-ink-mute">
@@ -150,11 +155,39 @@ export function LibrarySemanticSearch() {
         </div>
       )}
 
-      {!loading && submitted && results.length > 0 && (
-        <>
-          <p className="mt-12 font-mono text-[11px] uppercase tracking-label text-ink-mute">
-            “{submitted}” 검색 결과 — {results.length}건
+      {!loading && submitted && lawResults.length > 0 && (
+        <section className="mt-12">
+          <div className="flex items-baseline justify-between border-b border-paper-3 pb-3">
+            <p className="font-mono text-[11px] uppercase tracking-label text-forest">
+              LAWS · 관련 법령 조문
+            </p>
+            <span className="font-mono text-[11px] uppercase tracking-label text-ink-mute">
+              {lawResults.length}건
+            </span>
+          </div>
+          <ul className="mt-6 grid gap-4 md:grid-cols-2">
+            {lawResults.map((law) => (
+              <li key={law.id}>
+                <LawResultCard law={law} />
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 font-mono text-[10.5px] uppercase tracking-label text-ink-mute">
+            출처 · 국가법령정보센터 (law.go.kr)
           </p>
+        </section>
+      )}
+
+      {!loading && submitted && results.length > 0 && (
+        <section className="mt-14">
+          <div className="flex items-baseline justify-between border-b border-paper-3 pb-3">
+            <p className="font-mono text-[11px] uppercase tracking-label text-gold-deep">
+              LIBRARY · 도원 라이브러리
+            </p>
+            <span className="font-mono text-[11px] uppercase tracking-label text-ink-mute">
+              {results.length}건
+            </span>
+          </div>
           <ul className="mt-6 grid gap-6 md:grid-cols-2">
             {results.map((it) => (
               <li key={it.slug}>
@@ -162,7 +195,7 @@ export function LibrarySemanticSearch() {
               </li>
             ))}
           </ul>
-        </>
+        </section>
       )}
     </div>
   );

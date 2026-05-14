@@ -15,6 +15,19 @@ const PRACTICE_AREA_CODES: PracticeAreaCode[] = [
   "medical","subrogation","investigation","advisory","criminal",
 ];
 
+// Row shape returned by match_legal_provisions RPC.
+type LawHit = {
+  id: string;
+  law_id: string;
+  law_name: string;
+  article_number: string;
+  article_title: string | null;
+  article_body: string;
+  enforcement_date: string | null;
+  source_url: string | null;
+  similarity: number;
+};
+
 const bodySchema = z.object({
   query: z.string().min(1),
   filters: z
@@ -59,29 +72,33 @@ export async function POST(req: Request) {
 
   const result = await withAudit("library-search", body, async () => {
     // 1) Coarse candidate set — pgvector if available, else local data.
+    //    We also pull statute articles from legal_provisions on the same
+    //    embedding so the answer can cite 법령 alongside 칼럼·판례.
     let candidates: typeof libraryItems = [...libraryItems];
+    let lawHits: LawHit[] = [];
 
     if (hasOpenAIConfig() && hasSupabaseConfig()) {
       try {
         const qEmbedding = await embed(body.query);
         const supabase = getServerSupabase();
-        // Search both cases and columns by embedding. Note: requires the
-        // embedding column to be populated by the ingestion pipeline.
-        const [casesRes, columnsRes] = await Promise.all([
+        const [casesRes, columnsRes, lawsRes] = await Promise.all([
           supabase.rpc("match_cases", { query_embedding: qEmbedding, match_count: 20 }),
           supabase.rpc("match_columns", { query_embedding: qEmbedding, match_count: 20 }),
+          supabase.rpc("match_legal_provisions", { query_embedding: qEmbedding, match_count: 10 }),
         ]);
         if (!casesRes.error && !columnsRes.error) {
-          // If the RPCs exist and return rows, prefer DB result. Until the
-          // RPCs/ingestion are wired up, fall through to local keyword search.
           const merged = [...(casesRes.data ?? []), ...(columnsRes.data ?? [])];
           if (merged.length > 0) {
-            // Convert DB rows to LibraryItem shape via slug lookup
             const bySlug = new Map(libraryItems.map((it) => [it.slug, it]));
             candidates = merged
               .map((row: { slug: string }) => bySlug.get(row.slug))
               .filter((x): x is (typeof libraryItems)[number] => !!x);
           }
+        }
+        if (!lawsRes.error && lawsRes.data) {
+          lawHits = (lawsRes.data as LawHit[])
+            .filter((h) => typeof h.similarity === "number" && h.similarity > 0.25)
+            .slice(0, 6);
         }
       } catch (e) {
         console.warn("[library-search] pgvector path failed, falling back:", e);
@@ -179,9 +196,28 @@ export async function POST(req: Request) {
       };
     });
 
+    // Snippet — first ~160 chars of the article body, single-line.
+    const snip = (s: string, n = 160) => {
+      const flat = s.replace(/\s+/g, " ").trim();
+      return flat.length > n ? `${flat.slice(0, n)}…` : flat;
+    };
+
+    const laws = lawHits.map((h) => ({
+      id: h.id,
+      type: "law" as const,
+      law_name: h.law_name,
+      article_number: h.article_number,
+      article_title: h.article_title ?? "",
+      snippet: snip(h.article_body),
+      enforcement_date: h.enforcement_date,
+      similarity: Number(h.similarity?.toFixed(3) ?? 0),
+      source_url: h.source_url,
+    }));
+
     return {
       output: {
         results,
+        laws,
         related_queries: [
           `${body.query} 관련 판례`,
           `${body.query} 관련 칼럼`,
