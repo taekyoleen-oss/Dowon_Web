@@ -148,8 +148,14 @@ export function LibraryExplorer({ initialType = "all" }: { initialType?: "all" |
       </Tabs>
 
       {/* Layout */}
-      <div className="grid gap-10 lg:grid-cols-[260px_1fr] lg:gap-12">
-        <FilterSidebar groups={groups} values={filters} onChange={onChange} onClear={onClear} />
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr] lg:gap-12">
+        <FilterSidebar
+          groups={groups}
+          values={filters}
+          onChange={onChange}
+          onClear={onClear}
+          resultCount={filtered.length}
+        />
 
         <div>
           <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute">

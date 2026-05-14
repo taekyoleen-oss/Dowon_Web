@@ -109,12 +109,13 @@ export function LawyerDirectory() {
   };
 
   return (
-    <div className="grid gap-10 lg:grid-cols-[260px_1fr] lg:gap-12">
+    <div className="grid gap-6 lg:grid-cols-[260px_1fr] lg:gap-12">
       <FilterSidebar
         groups={groups}
         values={filters}
         onChange={onChange}
         onClear={onClear}
+        resultCount={filtered.length}
       />
 
       <div>
