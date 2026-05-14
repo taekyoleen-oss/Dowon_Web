@@ -1,129 +1,67 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Container } from "@/components/layout/container";
-import { Eyebrow, Tag, Button } from "@/components/ui";
+import { Eyebrow, Button } from "@/components/ui";
 import { lawyers } from "@/lib/data/lawyers";
+import { fellows, recoveryTeam, managementTeam } from "@/lib/data/staff";
 
 export const metadata = {
   title: "조직도",
   description:
-    "법무법인 도원의 조직 구조 — 변호사단, 부설기관(민간조사센터·의료분쟁지원센터), 채권회수팀, 경영관리팀.",
+    "법무법인 도원의 조직 구조 — 부설기관(민간조사센터·의료분쟁지원센터)과 5개 실무팀(조사·송무·형사·구상·고액보상)으로 구성됩니다.",
 };
 
-type Node = {
-  key: string;
-  title: string;
-  en: string;
-  count?: number | string;
-  desc: string;
-  href?: string;
-  members?: string[]; // lawyer slugs
-  highlight?: boolean;
-};
-
-const partners = lawyers.filter((l) => l.isPartner);
-const associates = lawyers.filter((l) => !l.isPartner && l.role === "변호사");
-const nonResident = lawyers.filter((l) => l.role.includes("비상임"));
-
-const tree: { layer: string; nodes: Node[] }[] = [
+// Five operating teams as shown on dowonlaw.com/member/group.asp
+const teams = [
   {
-    layer: "Leadership",
-    nodes: [
-      {
-        key: "rep",
-        title: "대표변호사",
-        en: "Managing Partner",
-        count: 1,
-        desc: "도원의 통합 모델을 설계하고 보험사 자문·SIU 협업의 실무 기준을 만든 대표.",
-        href: "/people/lawyers/hong-myung-ho",
-        members: ["hong-myung-ho"],
-        highlight: true,
-      },
-    ],
+    name: "조사팀",
+    en: "Investigation",
+    work: ["사건조사", "증거수집"],
+    experts: ["담당변호사", "민간조사전문가"],
   },
   {
-    layer: "Practice — 변호사단",
-    nodes: [
-      {
-        key: "partners",
-        title: "파트너변호사",
-        en: "Partners",
-        count: partners.length,
-        desc: "보험·의료·자문·구상 분야 책임 운영.",
-        href: "/people/lawyers",
-        members: partners.map((l) => l.slug),
-      },
-      {
-        key: "associates",
-        title: "변호사",
-        en: "Associates",
-        count: associates.length,
-        desc: "분야별 사건 실무 수행.",
-        href: "/people/lawyers",
-        members: associates.map((l) => l.slug),
-      },
-      {
-        key: "fellows",
-        title: "비상임 / 고문",
-        en: "Of Counsel / Fellows",
-        count: nonResident.length + " + 외부 전문가 네트워크",
-        desc: "의사 자격 변호사(윤은희), 산업·실무 전문가 자문진.",
-        href: "/people/fellows",
-        members: nonResident.map((l) => l.slug),
-      },
-    ],
+    name: "송무팀",
+    en: "Litigation",
+    work: ["채무부존재소송", "손해배상소송"],
+    experts: ["담당변호사"],
   },
   {
-    layer: "Affiliate Centers — 부설기관",
-    nodes: [
-      {
-        key: "siu",
-        title: "민간조사센터",
-        en: "SIU · Investigation Center",
-        desc:
-          "수사기관 출신 조사·수사 전문가 — 내부자 비리·디지털 포렌식·지재권·기업 실사·소송 지원 7대 영역.",
-        href: "/centers/investigation",
-        highlight: true,
-      },
-      {
-        key: "medical",
-        title: "의료분쟁지원센터",
-        en: "Medical Disputes Center",
-        desc:
-          "진료기록 분석·보험금 지급 적정성 판단·의료과실 사고 분석·소송 수행. 의사 자격 변호사가 직접.",
-        href: "/centers/medical",
-        highlight: true,
-      },
-    ],
+    name: "형사팀",
+    en: "Criminal",
+    work: ["형사지원", "고소대리"],
+    experts: ["담당변호사"],
   },
   {
-    layer: "Operations — 운영팀",
-    nodes: [
-      {
-        key: "recovery",
-        title: "채권회수팀",
-        en: "Recovery Team",
-        desc: "재산조회·은닉 추적·강제집행·압류·추심. 판결 이후 회수까지 책임.",
-        href: "/people/recovery",
-      },
-      {
-        key: "management",
-        title: "경영관리팀",
-        en: "Management",
-        desc: "프로젝트·고객 관리·행정·총무.",
-        href: "/people/management",
-      },
-    ],
+    name: "구상팀",
+    en: "Subrogation",
+    work: ["추심 법조치"],
+    experts: ["담당변호사", "관련업무경력자"],
+  },
+  {
+    name: "고액보상팀",
+    en: "High-value Claims",
+    work: ["개호환자", "추적관리", "합의절충"],
+    experts: ["담당변호사", "관련업무경력자"],
   },
 ];
 
-function membersOf(slugs?: string[]) {
-  if (!slugs?.length) return null;
-  const list = slugs
-    .map((s) => lawyers.find((l) => l.slug === s))
-    .filter((x): x is (typeof lawyers)[number] => !!x);
-  if (list.length === 0) return null;
-  return list;
-}
+const centers = [
+  {
+    name: "민간조사센터",
+    en: "SIU · Investigation Center",
+    href: "/centers/investigation",
+    desc: "수사기관 출신 조사·수사 전문가가 내부자 비리·디지털 포렌식·기업 실사·소송 지원을 수행.",
+  },
+  {
+    name: "의료분쟁지원센터",
+    en: "Medical Disputes Center",
+    href: "/centers/medical",
+    desc: "의사 자격 변호사가 진료기록 분석·보험금 지급 적정성·의료과실 사건을 직접 검토.",
+  },
+];
+
+const lawyerTotal = lawyers.length;
+const staffTotal = fellows.length + recoveryTeam.length + managementTeam.length;
 
 export default function GroupPage() {
   return (
@@ -136,90 +74,207 @@ export default function GroupPage() {
           </h1>
           <p className="mt-3 font-serif-ko text-h2 text-ink">법무법인 도원 조직도</p>
           <p className="mt-8 max-w-[36em] font-serif-ko text-body-lg text-ink-soft leading-base">
-            도원은 변호사단을 중심으로, 부설 민간조사센터·의료분쟁지원센터, 그리고
-            채권회수팀·경영관리팀이 한 사건에 동시 투입되는 구조입니다. 송무·의료·SIU·구상
-            4축이 직선 배치가 아닌 병렬 협업으로 작동합니다.
+            법무법인 도원을 중심으로 두 개의 부설기관(민간조사센터·의료분쟁지원센터)이 자리하고,
+            그 아래에 5개 실무팀(조사·송무·형사·구상·고액보상)이 각각 업무 영역과 전문가군을
+            가진 구조로 운영됩니다.
           </p>
         </Container>
       </section>
 
+      {/* Structured org chart — mirrors the live site's group.asp diagram
+          but rendered as native HTML with brand styling so links and
+          counts stay current. */}
       <section className="section-y bg-paper-2">
         <Container size="wide">
-          <div className="space-y-14">
-            {tree.map((row) => (
-              <div key={row.layer}>
-                <p className="label-mono text-gold">{row.layer}</p>
-                <div
-                  className="mt-5 grid gap-px bg-paper-3 border border-paper-3"
-                  style={{
-                    gridTemplateColumns: `repeat(${Math.min(row.nodes.length, 3)}, minmax(0, 1fr))`,
-                  }}
-                >
-                  {row.nodes.map((n) => {
-                    const m = membersOf(n.members);
-                    return (
-                      <div
-                        key={n.key}
-                        className={
-                          "bg-paper p-7 lg:p-9 flex flex-col" +
-                          (n.highlight ? " border-l-2 border-gold" : "")
-                        }
-                      >
-                        <div className="flex items-baseline justify-between">
-                          <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute">
-                            {n.en}
-                          </p>
-                          {n.count !== undefined && (
-                            <span className="font-mono text-[11px] uppercase tracking-label text-gold">
-                              {typeof n.count === "number" ? `${n.count}명` : n.count}
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="mt-3 font-serif-ko text-h2 font-semibold text-ink">
-                          {n.title}
-                        </h3>
-                        <p className="mt-4 font-serif-ko text-body-lg text-ink-soft leading-base">
-                          {n.desc}
-                        </p>
+          <Eyebrow index={2}>STRUCTURE · 구조</Eyebrow>
+          <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">
+            조직 구조도
+          </h2>
 
-                        {m && (
-                          <ul className="mt-5 flex flex-wrap gap-1.5">
-                            {m.slice(0, 6).map((l) => (
-                              <li key={l.slug}>
-                                <Link href={`/people/lawyers/${l.slug}`}>
-                                  <Tag variant={l.specialQualifications?.length ? "accent" : "default"}>
-                                    {l.nameKo}
-                                  </Tag>
-                                </Link>
-                              </li>
-                            ))}
-                            {m.length > 6 && (
-                              <li>
-                                <Tag variant="default">+{m.length - 6}</Tag>
-                              </li>
-                            )}
-                          </ul>
-                        )}
-
-                        {n.href && (
-                          <Link
-                            href={n.href}
-                            className="mt-7 inline-flex items-center font-serif-ko text-[14.5px] text-ink font-semibold border-b border-ink pb-1 hover:text-gold-deep hover:border-gold-deep transition-colors self-start"
-                          >
-                            자세히 →
-                          </Link>
-                        )}
-                      </div>
-                    );
-                  })}
+          <div className="mt-14 space-y-6">
+            {/* Root — 법무법인 도원 */}
+            <div className="flex justify-center">
+              <div className="relative inline-flex items-center gap-3 rounded-md border-2 border-ink bg-paper px-8 py-5 shadow-[5px_5px_0_0_var(--tw-shadow-color)] shadow-ink/15">
+                <span className="font-display italic text-2xl text-ink">D</span>
+                <span className="h-7 w-px bg-paper-3" />
+                <div>
+                  <p className="font-serif-ko text-h3 font-semibold text-ink">
+                    법무법인 도원
+                  </p>
+                  <p className="font-mono text-[10px] uppercase tracking-label text-ink-mute">
+                    Dowon Law Firm
+                  </p>
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* Connector */}
+            <div className="flex justify-center" aria-hidden>
+              <div className="h-7 w-px bg-ink/30" />
+            </div>
+
+            {/* Two affiliate centers */}
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {centers.map((c) => (
+                <li key={c.name}>
+                  <Link
+                    href={c.href}
+                    className="block h-full rounded-md border border-ink bg-night text-paper p-6 hover:bg-night-2 transition-colors"
+                  >
+                    <p className="font-mono text-[10.5px] uppercase tracking-label text-gold-bright">
+                      {c.en}
+                    </p>
+                    <h3 className="mt-3 font-serif-ko text-h3 font-semibold">
+                      {c.name}
+                    </h3>
+                    <p className="mt-3 font-serif-ko text-[14px] text-paper-3 leading-relaxed">
+                      {c.desc}
+                    </p>
+                    <span className="mt-5 inline-flex items-center font-mono text-[11px] uppercase tracking-label text-gold-bright">
+                      자세히 →
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+
+            {/* Connector */}
+            <div className="flex justify-center" aria-hidden>
+              <div className="h-7 w-px bg-ink/30" />
+            </div>
+
+            {/* Five operating teams */}
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {teams.map((t) => (
+                <li
+                  key={t.name}
+                  className="flex flex-col rounded-md border border-ink bg-paper overflow-hidden"
+                >
+                  <div className="bg-ink text-paper px-4 py-3">
+                    <p className="font-serif-ko text-h3 font-semibold leading-tight">
+                      {t.name}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[10px] uppercase tracking-label text-paper-3">
+                      {t.en}
+                    </p>
+                  </div>
+
+                  <div className="flex-1 p-4 space-y-4">
+                    <div>
+                      <p className="inline-block rounded-sm bg-gold/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-label text-gold-deep">
+                        업무
+                      </p>
+                      <ul className="mt-2 space-y-1 font-serif-ko text-[13.5px] text-ink leading-snug">
+                        {t.work.map((w) => (
+                          <li key={w}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="inline-block rounded-sm bg-paper-2 px-2 py-0.5 font-mono text-[10px] uppercase tracking-label text-ink-soft">
+                        주요 전문가
+                      </p>
+                      <ul className="mt-2 space-y-1 font-serif-ko text-[13.5px] text-ink-soft leading-snug">
+                        {t.experts.map((e) => (
+                          <li key={e}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
+
+          {/* Reference image — original org chart from dowonlaw.com,
+              kept for visual continuity with the legacy site. */}
+          <details className="mt-14 group">
+            <summary className="inline-flex items-center gap-2 cursor-pointer font-mono text-[11px] uppercase tracking-label text-ink-mute hover:text-ink">
+              참고 · 기존 조직도 이미지
+              <span aria-hidden className="transition-transform group-open:rotate-90">
+                →
+              </span>
+            </summary>
+            <div className="mt-5 rounded-md border border-paper-3 bg-paper p-6">
+              <Image
+                src="/brand/group/org-chart.png"
+                alt="법무법인 도원 기존 조직도"
+                width={977}
+                height={680}
+                className="w-full h-auto"
+              />
+            </div>
+          </details>
         </Container>
       </section>
 
+      {/* Personnel summary — totals + links to each section */}
       <section className="section-y">
+        <Container size="wide">
+          <Eyebrow index={3}>PEOPLE · 구성원</Eyebrow>
+          <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">
+            구성원 현황
+          </h2>
+          <p className="mt-5 max-w-[42em] font-serif-ko text-body-lg text-ink-soft leading-base">
+            변호사 {lawyerTotal}명을 중심으로, 산업·의학 자문 고문 {fellows.length}명과
+            채권회수·경영관리 실무진 {staffTotal - fellows.length}명이 함께 사건을 받칩니다.
+          </p>
+
+          <ul className="mt-12 grid gap-px bg-paper-3 border border-paper-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                href: "/people/lawyers",
+                label: "변호사",
+                en: "Lawyers",
+                count: lawyerTotal,
+              },
+              {
+                href: "/people/fellows",
+                label: "고문·전문위원",
+                en: "Fellows",
+                count: fellows.length,
+              },
+              {
+                href: "/people/recovery",
+                label: "채권회수팀",
+                en: "Recovery",
+                count: recoveryTeam.length,
+              },
+              {
+                href: "/people/management",
+                label: "경영관리팀",
+                en: "Management",
+                count: managementTeam.length,
+              },
+            ].map((g) => (
+              <li key={g.href} className="bg-paper">
+                <Link
+                  href={g.href}
+                  className="block p-7 lg:p-8 h-full hover:bg-paper-2 transition-colors group"
+                >
+                  <p className="font-mono text-[10.5px] uppercase tracking-label text-ink-mute">
+                    {g.en}
+                  </p>
+                  <p className="mt-4 font-display italic text-[clamp(40px,5vw,56px)] text-ink leading-none">
+                    {g.count}
+                    <span className="ml-1 font-serif-ko text-h3 text-ink-soft not-italic">
+                      명
+                    </span>
+                  </p>
+                  <p className="mt-5 font-serif-ko text-h3 font-semibold text-ink">
+                    {g.label}
+                  </p>
+                  <span className="mt-4 inline-flex items-center font-serif-ko text-[14px] text-ink font-semibold border-b border-ink pb-0.5 group-hover:text-gold-deep group-hover:border-gold-deep transition-colors">
+                    자세히 →
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Container>
+      </section>
+
+      <section className="section-y bg-paper-2">
         <Container size="base" className="text-center">
           <Eyebrow>NEXT</Eyebrow>
           <h2 className="mt-4 font-serif-ko text-h1 text-ink font-semibold">
@@ -229,7 +284,9 @@ export default function GroupPage() {
             전문분야·직책·특수자격으로 필터링해서 적합한 변호사를 찾아보세요.
           </p>
           <div className="mt-10">
-            <Button href="/people/lawyers" variant="primary" size="lg">변호사 디렉터리</Button>
+            <Button href="/people/lawyers" variant="primary" size="lg">
+              변호사 디렉터리
+            </Button>
           </div>
         </Container>
       </section>
