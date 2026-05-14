@@ -5,44 +5,46 @@ import { MapPin, ExternalLink } from "lucide-react";
 export const metadata = { title: "오시는 길" };
 
 // Office location — 서울특별시 서초구 서초대로55길 3, 애니빌딩.
-// Approximate coordinates (around 양재역). Adjust here when verified.
+// VERIFY: coordinates approximated for 애니빌딩 entrance. To pin exactly,
+// open https://map.kakao.com/, find the building, right-click → "좌표복사"
+// and paste the values into lat/lng below. All map services (embed +
+// deep links) read from this single source.
 const OFFICE = {
+  name: "법무법인 도원",
   address: "서울특별시 서초구 서초대로55길 3, 애니빌딩 4-5층",
   addressShort: "서초구 서초대로55길 3",
-  query: "법무법인 도원 (서초대로55길 3)",
   lat: 37.4862,
   lng: 127.0312,
 };
 
-// OpenStreetMap embed — no API key required, decent quality, interactive.
-// bbox = lng-0.004,lat-0.0025,lng+0.004,lat+0.0025 → ~500m view
-const osmEmbedUrl = (() => {
-  const dLng = 0.004;
-  const dLat = 0.0025;
-  const bbox = [
-    OFFICE.lng - dLng,
-    OFFICE.lat - dLat,
-    OFFICE.lng + dLng,
-    OFFICE.lat + dLat,
-  ].join("%2C");
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${OFFICE.lat}%2C${OFFICE.lng}`;
-})();
+// Default visible map = Naver. Mobile search URL is iframe-friendlier
+// than the desktop variant. Falls back to a search-by-name view; the
+// marker appears once the page renders.
+const naverEmbedUrl =
+  `https://m.map.naver.com/search2/search.naver?query=${encodeURIComponent(
+    OFFICE.name + " " + OFFICE.addressShort
+  )}`;
 
-// Native-app deep links — Korean users overwhelmingly prefer these.
+// Native-app deep links — all coordinate-based so each service pins the
+// exact building rather than fuzzy-searching by name.
 const mapLinks = [
   {
-    label: "카카오맵",
-    href: `https://map.kakao.com/?q=${encodeURIComponent(OFFICE.query)}`,
+    label: "네이버지도",
+    // p=<lng>,<lat>,<zoom> centers the desktop map on the precise point.
+    href: `https://map.naver.com/p/search/${encodeURIComponent(
+      OFFICE.name
+    )}?c=15.00,0,0,0,dh&p=${OFFICE.lng},${OFFICE.lat},15`,
   },
   {
-    label: "네이버지도",
-    href: `https://map.naver.com/v5/search/${encodeURIComponent(OFFICE.query)}`,
+    label: "카카오맵",
+    // Kakao's documented deep link: /link/map/<name>,<lat>,<lng>
+    href: `https://map.kakao.com/link/map/${encodeURIComponent(
+      OFFICE.name
+    )},${OFFICE.lat},${OFFICE.lng}`,
   },
   {
     label: "구글맵",
-    href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      OFFICE.address
-    )}`,
+    href: `https://www.google.com/maps?q=${OFFICE.lat},${OFFICE.lng}`,
   },
 ];
 
@@ -125,8 +127,8 @@ export default function VisitPage() {
               <p className="label-mono">지도</p>
               <div className="mt-3 aspect-[4/3] w-full overflow-hidden rounded-md border border-paper-3 bg-paper-2 relative">
                 <iframe
-                  title={`${OFFICE.addressShort} 지도`}
-                  src={osmEmbedUrl}
+                  title={`${OFFICE.addressShort} 지도 — 네이버지도`}
+                  src={naverEmbedUrl}
                   className="absolute inset-0 h-full w-full"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
