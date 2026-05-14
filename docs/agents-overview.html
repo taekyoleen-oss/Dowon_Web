@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DOWON · AI AGENTS</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────────
+     DOWON · AI Agents — overview
+     style: Linear-grid × 2D retro (paper / amber CRT)
+     fully self-contained — no external assets
+     ───────────────────────────────────────────────────────────────── */
+
+  :root {
+    --paper:   #f4ecd8;
+    --paper-2: #ece2c5;
+    --paper-3: #d6c89c;
+    --ink:     #161513;
+    --ink-soft:#3d3933;
+    --ink-mute:#6a6258;
+    --gold:    #b9892b;
+    --amber:   #d9952c;
+    --forest:  #2f5d3f;
+    --rust:    #a04125;
+    --indigo:  #2c3e7a;
+    --grid:    #c8b988;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'JetBrains Mono','IBM Plex Mono','Source Code Pro',
+                 'Courier New', ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Subtle paper grid */
+  body {
+    background-image:
+      linear-gradient(to right,  rgba(0,0,0,0.025) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0,0,0,0.025) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: -1px -1px;
+    min-height: 100vh;
+  }
+
+  .frame {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 36px 28px 80px;
+  }
+
+  /* ── HEADER ───────────────────────────────────────────────────── */
+
+  .head {
+    border: 2px solid var(--ink);
+    background: var(--paper);
+    padding: 18px 22px;
+    position: relative;
+  }
+  .head::before {
+    content: "";
+    position: absolute;
+    inset: -7px;
+    border: 1px dashed var(--ink);
+    pointer-events: none;
+  }
+
+  .head-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .head h1 {
+    margin: 0;
+    font-size: 28px;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+  }
+  .head h1 .small { font-size: 16px; color: var(--ink-mute); }
+  .head .meta {
+    font-size: 11px;
+    color: var(--ink-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  .head .blink { display: inline-block; animation: blink 1.4s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .head .sub {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    max-width: 78ch;
+  }
+
+  /* ── LEGEND ───────────────────────────────────────────────────── */
+
+  .legend {
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .legend .box {
+    border: 1px dashed var(--ink-soft);
+    padding: 10px 12px;
+    background: var(--paper-2);
+  }
+  .legend .box b {
+    color: var(--ink);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+  .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .dot.public  { background: var(--forest); }
+  .dot.admin   { background: var(--rust); }
+  .dot.insurer { background: var(--indigo); }
+
+  /* ── GRID ─────────────────────────────────────────────────────── */
+
+  .section-title {
+    margin: 40px 0 14px;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-title::before,
+  .section-title::after {
+    content: "";
+    flex: 1;
+    border-top: 1px dashed var(--ink-soft);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    position: relative;
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    padding: 18px 18px 16px;
+    box-shadow: 5px 5px 0 0 var(--ink);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .card:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 7px 7px 0 0 var(--ink);
+  }
+
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    border-bottom: 1px dashed var(--ink-soft);
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+  }
+  .id-block .num {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: var(--gold);
+    text-transform: uppercase;
+  }
+  .id-block .name {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-top: 4px;
+  }
+  .id-block .kor {
+    font-family: 'Noto Serif KR','Source Han Serif KR','Apple SD Gothic Neo',
+                 'Malgun Gothic', serif;
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-top: 4px;
+    letter-spacing: 0;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--ink);
+    padding: 3px 7px;
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    background: var(--paper-2);
+    white-space: nowrap;
+  }
+  .badge.public  { border-color: var(--forest); color: var(--forest); }
+  .badge.admin   { border-color: var(--rust);   color: var(--rust); }
+  .badge.insurer { border-color: var(--indigo); color: var(--indigo); }
+
+  .desc {
+    font-family: 'Noto Serif KR','Source Han Serif KR','Apple SD Gothic Neo',
+                 serif;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    line-height: 1.65;
+  }
+
+  .io {
+    margin-top: 14px;
+    font-size: 11px;
+    color: var(--ink-soft);
+    background: var(--paper-2);
+    border: 1px dashed var(--ink-soft);
+    padding: 9px 11px;
+    line-height: 1.75;
+  }
+  .io .arrow { color: var(--gold); margin: 0 6px; }
+  .io b { color: var(--ink); font-weight: 700; }
+
+  .tags {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tag {
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border: 1px solid var(--ink-soft);
+    padding: 3px 6px;
+    background: var(--paper);
+    color: var(--ink-soft);
+  }
+  .tag.hot { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  /* ── PIPELINE DIAGRAM ─────────────────────────────────────────── */
+
+  .pipe {
+    margin-top: 18px;
+    border: 2px solid var(--ink);
+    background: var(--paper);
+    padding: 22px;
+    box-shadow: 5px 5px 0 0 var(--ink);
+  }
+  .pipe pre {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink);
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .pipe pre .k { color: var(--gold); }
+  .pipe pre .g { color: var(--forest); }
+  .pipe pre .r { color: var(--rust); }
+  .pipe pre .i { color: var(--indigo); }
+  .pipe pre .mute { color: var(--ink-mute); }
+
+  /* ── STACK STRIP ─────────────────────────────────────────────── */
+
+  .stack {
+    margin-top: 18px;
+    border: 1px dashed var(--ink-soft);
+    background: var(--paper-2);
+    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px;
+    font-size: 11px;
+  }
+  .stack .cell b {
+    display: block;
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin-bottom: 4px;
+  }
+
+  /* ── FOOTER ───────────────────────────────────────────────────── */
+
+  .foot {
+    margin-top: 40px;
+    border-top: 1px dashed var(--ink-soft);
+    padding-top: 14px;
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* CRT-ish scanline (very subtle, optional) */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0.012) 0,
+      rgba(0,0,0,0.012) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 9999;
+    mix-blend-mode: multiply;
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <!-- ╭── HEADER ────────────────────────────────────────────────╮ -->
+  <header class="head">
+    <div class="head-row">
+      <h1>DOWON · AI AGENTS<span class="small"> // overview.html</span></h1>
+      <span class="meta">REV 2026-05 · v1.0<span class="blink"> █</span></span>
+    </div>
+    <p class="sub">
+      법무법인 도원 웹사이트에 구현된 AI 에이전트 8종 +
+      서브루트 1종. 각 에이전트는 Claude (claude-opus-4-7 계열) 위에서
+      동작하며, NDJSON 스트리밍 · 레이트 리밋 · 감사 로그를 공통 인프라로 사용합니다.
+    </p>
+
+    <div class="legend">
+      <div class="box"><span class="dot public"></span><b>PUBLIC</b> 일반 의뢰인 — 비인증</div>
+      <div class="box"><span class="dot admin"></span><b>ADMIN</b> 도원 변호사 — 어드민 쿠키 필요</div>
+      <div class="box"><span class="dot insurer"></span><b>INSURER</b> 보험사 실무진 (B2B)</div>
+    </div>
+  </header>
+
+  <!-- ╭── AGENT CARDS ──────────────────────────────────────────────╮ -->
+  <p class="section-title">▌ AGENTS · 8 EA</p>
+
+  <div class="grid">
+
+    <!-- 01 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="id-block">
+          <div class="num">AI #01 · /api/ai/triage</div>
+          <div class="name">Triage</div>
+          <div class="kor">사건 유형 진단 챗봇</div>
+        </div>
+        <span class="badge public">public</span>
+      </div>
+      <p class="desc">
+        의뢰인이 자유롭게 상황을 서술하면 사건 카테고리(교통·의료·건설·상속·기타)를
+        분류하고, 후보 변호사·관련 라이브러리 항목을 함께 안내합니다.
+        Intake로 인계하는 입구 역할.
+      </p>
+      <div class="io">
+        <b>IN</b> 사용자 메시지 + 대화 이력
+        <span class="arrow">→</span>
+        <b>OUT</b> 분류 + 변호사 후보 + 다음 단계 추천
+      </div>
+      <div class="tags">
+        <span class="tag">CHAT</span><span class="tag">STREAM</span>
+        <span class="tag">RL · light</span><span class="tag">AUDIT</span>
+      </div>
+    </article>
+
+    <!-- 02 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="id-block">
+          <div class="num">AI #02 · /api/ai/intake</div>
+          <div class="name">Intake</div>
+          <div class="kor">사건 정보 수집 도우미</div>
+        </div>
+        <span class="badge public">public</span>
+      </div>
+      <p class="desc">
+        사건 정보를 슬롯 기반으로 채워가는 멀티턴 챗. 일시·장소·당사자·손해·자료
+        등을 단계적으로 묻고, 완성도(completeness)가 50% 이상이면 상담 신청으로
+        넘길 수 있습니다. localStorage로 24h 세션 복원 지원.
+      </p>
+      <div class="io">
+        <b>IN</b> 메시지 + history + state + sessionId
+        <span class="arrow">→</span>
+        <b>OUT</b> 자연어 응답 + 업데이트된 슬롯 state
+      </div>
+      <div class="tags">
+        <span class="tag">CHAT</span><span class="tag">STREAM</span>
+        <span class="tag">MULTI-TURN</span>
+        <span class="tag">RL · intake-long</span>
+        <span class="tag">+ /confirm</span>
+      </div>
+    </article>
+
+    <!-- 03 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="id-block">
+          <div class="num">AI #03 · /api/ai/policy-analyze</div>
+          <div class="name">Policy Reader</div>
+          <div class="kor">약관 분석기</div>
+        </div>
+        <span class="badge admin">admin / insurer</span>
+      </div>
+      <p class="desc">
+        업로드된 보험 약관/증권 PDF에서 보장 항목, 면책 사유, 한도, 조건을 구조화해
+        추출합니다. PDF는 Claude의 document 블록으로 직접 전달, 별도 텍스트 추출
+        파이프라인 없음. 어드민 쿠키 또는 보험사 인증 필요.
+      </p>
+      <div class="io">
+        <b>IN</b> PDF (multipart) + 선택 정책 코드
+        <span class="arrow">→</span>
+        <b>OUT</b> coverage[] / exclusions[] / limits[] JSON
+      </div>
+      <div class="tags">
+        <span class="tag">PDF</span><span class="tag">JSON</span>
+        <span class="tag">RL · heavy</span><span class="tag">AUTH</span>
+      </div>
+    </article>
+
+    <!-- 04 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="id-block">
+          <div class="num">AI #04 · /api/ai/medical-analyze</div>
+          <div class="name">Medical Analyze</div>
+          <div class="kor">의료기록 사전 분석</div>
+        </div>
+        <span class="badge admin">admin only</span>
+      </div>
+      <p class="desc">
+        의료기록 PDF를 사전 분석해 진단·시술·합병증 후보를 추출합니다.
+        PRD §6.2에 따라 어드민 전용, 환자별 해시만 감사 로그에 남기고 원본 PII는
+        기록하지 않습니다. <code>DOWON_DISABLE_EXTERNAL_AI=true</code>로 폐쇄망 모드.
+      </p>
+      <div class="io">
+        <b>IN</b> 의료기록 PDF + 환자 식별자(해시)
+        <span class="arrow">→</span>
+        <b>OUT</b> diagnoses / procedures / complications JSON
+      </div>
+      <div class="tags">
+        <span class="tag">PDF</span><span class="tag">PHI-SAFE</span>
+        <span class="tag">RL · heavy</span><span class="tag">AUTH</span>
+        <span class="tag">ON-PREM OPT</span>
+      </div>
+    </article>
+
+    <!-- 05 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="id-block">
+          <div class="num">AI #11 · /api/ai/coverage-check</div>
+          <div class="name">Coverage Check</div>
+          <div class="kor">보험금 가능성 셀프체크</div>
+        </div>
+        <span class="badge public">public</span>
+      </div>
+      <p class="desc">
+        의뢰인 약관 + 사고 정보를 매칭해 보장·면책 후보 조항을 안내합니다.
+        변호사법 §23 / 보험업법 준수를 위해 단정 표현 금지. 최근 업데이트로
+        <b>멀티턴 follow-up</b>(텍스트/PDF 추가)을 지원해 처음부터 다시
+        시작하지 않고 검토를 갱신할 수 있습니다.
+      </p>
+      <div class="io">
+        <b>IN</b> 약관 텍스트 또는 PDF + 사고 정보 + history?
+        <span class="arrow">→</span>
+        <b>OUT</b> possibility · coverage · exclusions · 관련 판례
+      </div>
+      <div class="tags">
+        <span class="tag hot">MULTI-TURN ✶ NEW</span>
+        <span class="tag">PDF</span><span class="tag">STREAM</span>
+        <span class="tag">RL · heavy</span><span class="tag">AUDIT</span>
+      </div>
+    </article>
+
+    <!-- 06 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="id-block">
+          <div class="num">B2B · /api/ai/subrogation-check</div>
+          <div class="name">Subrogation Check</div>
+          <div class="kor">구상 가능성 진단</div>
+        </div>
+        <span class="badge insurer">insurer</span>
+      </div>
+      <p class="desc">
+        보험사 실무진이 사고 유형 · 당사자 · 손해액 · 지급 보험금 · 과실 비율 ·
+        추가 사실을 입력하면 구상 청구 가능성과 검토 포인트를 진단합니다.
+      </p>
+      <div class="io">
+        <b>IN</b> 사고 메타 + 손해/지급/과실 정보
+        <span class="arrow">→</span>
+        <b>OUT</b> 구상 가능성 점수 + 근거 + 추가 확인 자료 리스트
+      </div>
+      <div class="tags">
+        <span class="tag">JSON</span><span class="tag">RL · advice</span>
+        <span class="tag">AUDIT</span>
+      </div>
+    </article>
+
+    <!-- 07 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="id-block">
+          <div class="num">UTIL · /api/ai/lawyer-match</div>
+          <div class="name">Lawyer Match</div>
+          <div class="kor">변호사 매칭</div>
+        </div>
+        <span class="badge public">public</span>
+      </div>
+      <p class="desc">
+        사건 카테고리 + 자유 서술을 받아 도원 변호사 프로필 DB에서 가장 적합한
+        후보를 선정합니다. Triage / Intake 종료 시점에 호출돼 추천 결과를 함께
+        제시하는 헬퍼 에이전트.
+      </p>
+      <div class="io">
+        <b>IN</b> 카테고리 + 사건 요약
+        <span class="arrow">→</span>
+        <b>OUT</b> 변호사 후보 N명 + 매칭 사유
+      </div>
+      <div class="tags">
+        <span class="tag">JSON</span><span class="tag">RL · search</span>
+        <span class="tag">AUDIT</span>
+      </div>
+    </article>
+
+    <!-- 08 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="id-block">
+          <div class="num">UTIL · /api/ai/library-search</div>
+          <div class="name">Library Search</div>
+          <div class="kor">판례·칼럼 시맨틱 검색</div>
+        </div>
+        <span class="badge public">public</span>
+      </div>
+      <p class="desc">
+        도원 라이브러리(판례 / 칼럼 / 강의)를 임베딩 기반 시맨틱 검색합니다.
+        Coverage Check 등 다른 에이전트에서 결과 카드에 관련 항목을 자동
+        매칭해 보여주는 데에도 사용됩니다.
+      </p>
+      <div class="io">
+        <b>IN</b> 검색 쿼리 + 카테고리 필터
+        <span class="arrow">→</span>
+        <b>OUT</b> 관련도 정렬된 항목 리스트 (제목·발췌·URL)
+      </div>
+      <div class="tags">
+        <span class="tag">EMBEDDINGS</span>
+        <span class="tag">RL · search</span><span class="tag">AUDIT</span>
+      </div>
+    </article>
+
+  </div>
+
+  <!-- ╭── PIPELINE DIAGRAM ─────────────────────────────────────────╮ -->
+  <p class="section-title">▌ FLOW · 사용자 흐름</p>
+  <div class="pipe">
+<pre>
+                       ┌──────────────────┐
+                       │   VISITOR (의뢰인)  │
+                       └────────┬─────────┘
+                                │ "어떤 일이신가요?"
+                                ▼
+       <span class="g">┌────────────────────────────────────────────────┐</span>
+       <span class="g">│  AI #01  TRIAGE       (사건 유형 진단 챗봇)         │</span>
+       <span class="g">└─┬────────────┬────────────┬─────────────────┬─┘</span>
+         │            │            │                 │
+         │ 교통/상해     │ 보험금        │ 의료 분쟁          │ 자료 검색
+         ▼            ▼            ▼                 ▼
+   <span class="g">┌─────────┐  ┌──────────────┐  ┌─────────────┐   ┌─────────────────┐</span>
+   <span class="g">│ INTAKE  │  │ COVERAGE     │  │ (전문 상담)    │   │ LIBRARY SEARCH  │</span>
+   <span class="g">│  #02    │  │ CHECK #11    │  │              │   │  utility        │</span>
+   <span class="g">└──┬──────┘  └──────┬───────┘  └──────────────┘   └─────────────────┘</span>
+      │              │ <span class="mute">multi-turn ← follow-up (txt/pdf)</span>
+      │              ▼
+      │       <span class="g">관련 판례 / 칼럼 매칭  (← LIBRARY SEARCH)</span>
+      │       <span class="g">변호사 후보 N명         (← LAWYER MATCH)</span>
+      │
+      ▼  (completeness ≥ 0.5)
+  <span class="g">/api/ai/intake/confirm  →  법무팀 알림 (Slack · Resend)</span>
+
+
+   <span class="r">┌───────────────────────  ADMIN / INSURER 영역  ───────────────────┐</span>
+   <span class="r">│  POLICY READER #03      약관 PDF → 보장/면책 추출                  │</span>
+   <span class="r">│  MEDICAL ANALYZE #04    의료기록 PDF → 진단/시술/합병증 (PHI-safe)   │</span>
+   <span class="i">│  SUBROGATION CHECK      보험사 입력 → 구상 가능성 진단              │</span>
+   <span class="r">└────────────────────────────────────────────────────────────────┘</span>
+</pre>
+  </div>
+
+  <!-- ╭── COMMON STACK ─────────────────────────────────────────────╮ -->
+  <p class="section-title">▌ SHARED INFRA</p>
+  <div class="stack">
+    <div class="cell"><b>MODEL</b>claude-opus-4-7 (system prompt 캐싱)</div>
+    <div class="cell"><b>WIRE</b>NDJSON 스트리밍 (token · state · error)</div>
+    <div class="cell"><b>RATE LIMIT</b>Upstash Redis · tier별 (heavy/search/advice/intake-long/light)</div>
+    <div class="cell"><b>AUDIT</b>lib/ai/audit.ts → Supabase</div>
+    <div class="cell"><b>ERROR</b>Sentry (서버 + 클라이언트)</div>
+    <div class="cell"><b>NOTIFY</b>Resend (이메일) · Slack webhook</div>
+  </div>
+
+  <!-- ╭── FOOTER ───────────────────────────────────────────────────╮ -->
+  <footer class="foot">
+    <span>법무법인 도원 · 변호사법 §23 · 보험업법 준수</span>
+    <span>docs/agents-overview.html · self-contained</span>
+  </footer>
+
+</div>
+</body>
+</html>
