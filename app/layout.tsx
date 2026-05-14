@@ -24,14 +24,28 @@ export const metadata: Metadata = {
     "기업 법률자문",
   ],
   authors: [{ name: "법무법인 도원" }],
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     type: "website",
     locale: "ko_KR",
     siteName: "법무법인 도원",
     title: "법무법인 도원 | Dowon Law",
     description: "조사 → 소송 → 구상 → 추심, 한 팀으로 끝냅니다.",
+    // og:image is auto-supplied by app/opengraph-image.tsx
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "법무법인 도원 | Dowon Law",
+    description: "조사 → 소송 → 구상 → 추심, 한 팀으로 끝냅니다.",
   },
   robots: { index: true, follow: true },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+  },
 };
 
 // PRD Section 9.3 — KWCAG 2.2: do NOT set user-scalable=0
