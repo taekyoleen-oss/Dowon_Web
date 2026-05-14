@@ -131,6 +131,7 @@ export async function POST(req: Request) {
     // 3) Notify dowon
     await notifyConsultation({
       title: `🔔 신규 AI 인테이크 — ${body.contact.name} (${summary.sections[0]?.value ?? "기타"})`,
+      replyTo: body.contact.email || undefined,
       fields: [
         { name: "성함",      value: body.contact.name },
         { name: "연락처",     value: body.contact.phone },

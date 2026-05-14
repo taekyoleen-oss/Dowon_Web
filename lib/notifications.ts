@@ -6,6 +6,12 @@
 type Notification = {
   title: string;
   fields: Array<{ name: string; value: string }>;
+  /**
+   * Optional. When set to the applicant's email, the lawyer can hit "Reply"
+   * on the notification mail and the response goes straight to the client.
+   * Quietly ignored if not a syntactically plausible email.
+   */
+  replyTo?: string;
 };
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL ?? "";
@@ -58,6 +64,9 @@ async function sendEmail(n: Notification) {
       )
       .join("") +
     "</dl>";
+  const validReplyTo =
+    n.replyTo && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(n.replyTo) ? n.replyTo : undefined;
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -69,6 +78,7 @@ async function sendEmail(n: Notification) {
       to: NOTIFY_EMAIL,
       subject: n.title,
       html,
+      ...(validReplyTo ? { reply_to: validReplyTo } : {}),
     }),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}`);

@@ -114,8 +114,12 @@ export async function submitConsultation(
       personal: "개인 사건",
     };
 
+    const applicantEmail =
+      "email" in data && typeof data.email === "string" ? data.email : undefined;
+
     await notifyConsultation({
       title: `🔔 신규 상담 신청 — ${personaLabels[data.persona]}`,
+      replyTo: applicantEmail,
       fields: [
         ...Object.entries(contactInfo).map(([k, v]) => ({
           name: k,
