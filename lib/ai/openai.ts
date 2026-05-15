@@ -21,24 +21,36 @@ export function hasOpenAIConfig() {
 export const EMBEDDING_MODEL = "text-embedding-3-small";
 export const EMBEDDING_DIMS = 1536;
 
-/** Generate an embedding for a single text. Returns 1536-dim float array. */
+/**
+ * Generate an embedding for a single text. Returns 1536-dim float array.
+ *
+ * Per-call timeout (20s) + no retries — under Vercel function limits we
+ * want to fail fast and surface the error to the user rather than burn
+ * the whole maxDuration budget retrying.
+ */
 export async function embed(text: string): Promise<number[]> {
   const openai = getOpenAI();
-  const res = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: text,
-    encoding_format: "float",
-  });
+  const res = await openai.embeddings.create(
+    {
+      model: EMBEDDING_MODEL,
+      input: text,
+      encoding_format: "float",
+    },
+    { timeout: 20_000, maxRetries: 0 }
+  );
   return res.data[0].embedding;
 }
 
 export async function embedBatch(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   const openai = getOpenAI();
-  const res = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: texts,
-    encoding_format: "float",
-  });
+  const res = await openai.embeddings.create(
+    {
+      model: EMBEDDING_MODEL,
+      input: texts,
+      encoding_format: "float",
+    },
+    { timeout: 30_000, maxRetries: 0 }
+  );
   return res.data.map((d) => d.embedding);
 }

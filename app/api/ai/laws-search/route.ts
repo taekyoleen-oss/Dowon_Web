@@ -64,9 +64,16 @@ export async function POST(req: Request) {
   }
 
   if (!hasOpenAIConfig() || !hasSupabaseConfig()) {
+    const missing = [
+      !hasOpenAIConfig() && "OPENAI_API_KEY",
+      !hasSupabaseConfig() && "SUPABASE",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    console.warn("[laws-search] missing env:", missing);
     return NextResponse.json({
       results: [],
-      message: "검색 인프라가 설정되지 않았습니다.",
+      error: `검색 인프라 환경 변수가 설정되지 않았습니다 (${missing}). 관리자에게 문의해 주세요.`,
     });
   }
 
