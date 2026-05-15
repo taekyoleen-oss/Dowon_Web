@@ -36,3 +36,5 @@ next-env.d.ts
 # local-only review / scratch artifacts (kept on disk, not in git)
 dowon-ai-review-report.*
 *-review-report.*
+
+.vercel

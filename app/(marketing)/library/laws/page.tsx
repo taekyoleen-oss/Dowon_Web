@@ -20,41 +20,49 @@ export const revalidate = 60 * 60 * 6;
 async function getLawCatalog(): Promise<LawCatalogEntry[]> {
   if (!hasSupabaseConfig()) return [];
   const supabase = getServerSupabase();
-  // No native group-by in supabase-js v2 — we pull all rows once and
-  // aggregate in code. With ~5,000 articles across 20 laws this is
-  // sub-100ms and the response is cached.
-  const { data, error } = await supabase
-    .from("legal_provisions")
-    .select("law_id, law_name, enforcement_date");
-  if (error || !data) {
-    console.error("[laws] catalog fetch:", error?.message);
-    return [];
-  }
 
+  // Supabase REST caps a single .select() at db.max-rows (default 1,000).
+  // The corpus is ~6,600 rows across 20 laws, so a single fetch surfaces
+  // only the first 5 laws. Page through the table to aggregate fully —
+  // the response is cached for 6h (see `revalidate` above), so the extra
+  // round trips are absorbed on the cache miss only.
   const grouped = new Map<string, LawCatalogEntry>();
-  for (const row of data as Array<{
-    law_id: string;
-    law_name: string;
-    enforcement_date: string | null;
-  }>) {
-    const existing = grouped.get(row.law_id);
-    if (existing) {
-      existing.article_count += 1;
-      if (
-        row.enforcement_date &&
-        (!existing.latest_enforcement ||
-          row.enforcement_date > existing.latest_enforcement)
-      ) {
-        existing.latest_enforcement = row.enforcement_date;
-      }
-    } else {
-      grouped.set(row.law_id, {
-        law_id: row.law_id,
-        law_name: row.law_name,
-        article_count: 1,
-        latest_enforcement: row.enforcement_date,
-      });
+  const PAGE = 1000;
+  for (let offset = 0; offset < 50_000; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("legal_provisions")
+      .select("law_id, law_name, enforcement_date")
+      .range(offset, offset + PAGE - 1);
+    if (error) {
+      console.error("[laws] catalog fetch:", error.message);
+      break;
     }
+    if (!data || data.length === 0) break;
+    for (const row of data as Array<{
+      law_id: string;
+      law_name: string;
+      enforcement_date: string | null;
+    }>) {
+      const existing = grouped.get(row.law_id);
+      if (existing) {
+        existing.article_count += 1;
+        if (
+          row.enforcement_date &&
+          (!existing.latest_enforcement ||
+            row.enforcement_date > existing.latest_enforcement)
+        ) {
+          existing.latest_enforcement = row.enforcement_date;
+        }
+      } else {
+        grouped.set(row.law_id, {
+          law_id: row.law_id,
+          law_name: row.law_name,
+          article_count: 1,
+          latest_enforcement: row.enforcement_date,
+        });
+      }
+    }
+    if (data.length < PAGE) break;
   }
   return Array.from(grouped.values()).sort(
     (a, b) => b.article_count - a.article_count

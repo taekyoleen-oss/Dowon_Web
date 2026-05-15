@@ -25,7 +25,11 @@ import {
   searchLaws,
   fetchLawBody,
   flattenLawArticles,
+  searchAdmrul,
+  fetchAdmrulBody,
+  flattenAdmrulArticles,
   type NlicLawHit,
+  type NlicAdmrulHit,
 } from "../lib/data-sources/nlic";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -61,6 +65,12 @@ const EMBED_MODEL = "text-embedding-3-small";
  * Grouped by domain so we can prune or extend by section in future
  * passes. The script is idempotent, so adding a new entry only
  * embeds that new law on the next run.
+ *
+ * Sections include both the parent 법률 and its 시행령·시행규칙 where
+ * available — the 시행령 carries the operational detail (e.g. 자본금
+ * 기준, 등록요건의 구체 항목, 보고서식) that the parent law delegates
+ * via "대통령령으로 정한다" clauses, so omitting them would leave the
+ * search results half-answered.
  */
 const LAW_LIST = [
   // ── Phase 1 — civil & criminal foundations ───────────────────────
@@ -71,31 +81,76 @@ const LAW_LIST = [
   "형법",
   "형사소송법",
 
-  // ── Phase 1 — insurance & auto core ──────────────────────────────
+  // ── Phase 1 — insurance & auto core (parent + 시행령 + 시행규칙) ──
   "보험업법",
+  "보험업법 시행령",
+  "보험업법 시행규칙",
   "자동차손해배상 보장법",
+  "자동차손해배상 보장법 시행령",
+  "자동차손해배상 보장법 시행규칙",
 
   // ── Phase 1 — medical core ───────────────────────────────────────
   "의료법",
+  "의료법 시행령",
+  "의료법 시행규칙",
   "의료사고 피해구제 및 의료분쟁 조정 등에 관한 법률",
+  "의료사고 피해구제 및 의료분쟁 조정 등에 관한 법률 시행령",
+  "의료사고 피해구제 및 의료분쟁 조정 등에 관한 법률 시행규칙",
 
   // ── Phase 2 — auto / traffic liability ───────────────────────────
   "교통사고처리 특례법",          // 형사 과실 처리의 출발점
+  "교통사고처리 특례법 시행령",
   "도로교통법",                    // 사고 책임·과실 비율 근거
+  "도로교통법 시행령",
+  "도로교통법 시행규칙",
   "자동차관리법",                  // 차량 결함·관리 분쟁
+  "자동차관리법 시행령",
+  "자동차관리법 시행규칙",
 
   // ── Phase 2 — insurance adjacency ────────────────────────────────
   "보험사기방지 특별법",          // SIU 협업의 핵심 근거 법
+  "보험사기방지 특별법 시행령",
   "국민건강보험법",                // 의료비·구상 분쟁
+  "국민건강보험법 시행령",
+  "국민건강보험법 시행규칙",
   "산업재해보상보험법",            // 산재 보상·구상
+  "산업재해보상보험법 시행령",
+  "산업재해보상보험법 시행규칙",
 
   // ── Phase 2 — medical adjacency ──────────────────────────────────
   "응급의료에 관한 법률",
+  "응급의료에 관한 법률 시행령",
+  "응급의료에 관한 법률 시행규칙",
   "약사법",                        // 의약품 관련 의료분쟁
+  "약사법 시행령",
+  "약사법 시행규칙",
 
   // ── Phase 2 — recovery & restructuring ───────────────────────────
   "채무자 회생 및 파산에 관한 법률",
+  "채무자 회생 및 파산에 관한 법률 시행령",
   "신용정보의 이용 및 보호에 관한 법률",
+  "신용정보의 이용 및 보호에 관한 법률 시행령",
+  "신용정보의 이용 및 보호에 관한 법률 시행규칙",
+];
+
+/**
+ * 행정규칙 list — 금융위·금감원·복지부 등의 고시·세칙·예규.
+ * 법률·시행령 위임에 따라 실제 운영 기준이 여기에 적혀 있어, 자문 자리에서
+ * "법령 어디에서 정해놓았느냐"는 질문이 사실은 이 묶음에서 답이 나옵니다.
+ */
+/**
+ * Names below are the exact NLIC `행정규칙명` strings — verified against
+ * the search index. Whitespace / 조사 matter (e.g. "조정기준" not "조정
+ * 기준") because resolveAdmrulHit fails closed on ambiguity. If you add
+ * more here, search the portal first to confirm the canonical name.
+ */
+const ADMRUL_LIST = [
+  // 보험·금융
+  "보험업감독규정",                // 금융위 고시 — 보험업법의 운영기준 본체
+  // 의료·건보
+  "행위 치료재료 등의 결정 및 조정기준",      // 복지부 — 신의료기술 평가 (NLIC: "조정기준" 띄어쓰기 없음)
+  // 자동차·도로
+  "자동차보험진료수가에 관한 기준",           // 국토부·복지부 — 진료수가 기준 (NLIC: "자동차보험진료수가" 붙여 쓰기)
 ];
 
 const CHUNK = 20;
@@ -163,6 +218,109 @@ async function resolveLawHit(name: string): Promise<NlicLawHit | null> {
     .join(", ");
   console.warn(`[nlic]   no confident match for "${name}". Top: ${top}`);
   return null;
+}
+
+/**
+ * Resolve an admrul name to a single NLIC hit. Same fail-closed posture
+ * as resolveLawHit. Match priority:
+ *   1. Whitespace-insensitive exact name match
+ *   2. Prefix match (preferring 고시/예규 over older 훈령)
+ *   3. Fail and log top candidates
+ */
+async function resolveAdmrulHit(name: string): Promise<NlicAdmrulHit | null> {
+  const json = await searchAdmrul(name, 50);
+  const raw =
+    json?.AdmRulSearch?.admrul ??
+    json?.AdmRulSearch?.AdmRul ??
+    [];
+  const hits: NlicAdmrulHit[] = Array.isArray(raw) ? raw : [raw];
+
+  if (hits.length === 0) {
+    console.warn(`[admrul]   no NLIC results for "${name}"`);
+    return null;
+  }
+
+  const target = normalize(name);
+  const exact = hits.find((h) => normalize(h.행정규칙명) === target);
+  if (exact) return exact;
+
+  const prefixed = hits
+    .filter((h) => normalize(h.행정규칙명).startsWith(target))[0];
+  if (prefixed) return prefixed;
+
+  const top = hits
+    .slice(0, 5)
+    .map((h) => `${h.행정규칙명} [${h.행정규칙종류 ?? "—"}]`)
+    .join(", ");
+  console.warn(`[admrul]   no confident match for "${name}". Top: ${top}`);
+  return null;
+}
+
+async function ingestAdmrul(name: string) {
+  console.log(`\n[admrul] ── ${name}`);
+  const hit = await resolveAdmrulHit(name);
+  if (!hit) {
+    console.warn(`[admrul]   no hit — skipping`);
+    return;
+  }
+  const ruleId = hit.행정규칙일련번호;
+  console.log(
+    `[admrul]   matched → ${hit.행정규칙명} (${hit.행정규칙종류 ?? "?"}, ID=${ruleId})`
+  );
+
+  const body = await fetchAdmrulBody({ ID: ruleId });
+  const articles = flattenAdmrulArticles(body, ruleId);
+  console.log(`[admrul]   ${hit.행정규칙명} — ${articles.length} articles`);
+  if (articles.length === 0) {
+    console.warn(`[admrul]   empty body (no 조문내용) — skipping`);
+    return;
+  }
+
+  let existing: Set<string> = new Set();
+  if (!force) {
+    const { data } = await supabase
+      .from("legal_provisions")
+      .select("article_number")
+      .eq("law_id", ruleId)
+      .not("embedding", "is", null);
+    existing = new Set((data ?? []).map((r) => r.article_number));
+  }
+
+  const toEmbed = articles.filter((a) => !existing.has(a.articleNumber));
+  if (toEmbed.length === 0) {
+    console.log(`[admrul]   all ${articles.length} articles already embedded`);
+    return;
+  }
+  console.log(`[admrul]   embedding ${toEmbed.length} article(s)`);
+
+  for (const batch of chunk(toEmbed, CHUNK)) {
+    const inputs = batch.map(
+      (a) => `${a.lawName} 제${a.articleNumber}조 ${a.articleTitle}\n${a.articleBody}`
+    );
+    const embeddings = await embedBatch(inputs);
+
+    const rows = batch.map((a, i) => ({
+      law_id: a.lawId,
+      law_name: a.lawName,
+      article_number: a.articleNumber,
+      article_title: a.articleTitle || null,
+      article_body: a.articleBody,
+      promulgation_date: parseDate(a.promulgationDate),
+      enforcement_date: parseDate(a.enforcementDate),
+      embedding: embeddings[i],
+      // Admrul detail page lives under /행정규칙/ on law.go.kr
+      source_url: `https://www.law.go.kr/행정규칙/${encodeURIComponent(a.lawName)}`,
+    }));
+
+    const { error } = await supabase
+      .from("legal_provisions")
+      .upsert(rows, { onConflict: "law_id,article_number" });
+    if (error) {
+      console.error(`[admrul]   upsert error:`, error.message);
+      throw error;
+    }
+  }
+  console.log(`[admrul]   ✓ ingested ${toEmbed.length}`);
 }
 
 async function ingestLaw(name: string) {
@@ -240,12 +398,21 @@ function parseDate(v?: string): string | null {
 }
 
 async function main() {
-  console.log(`[nlic] target: ${LAW_LIST.length} laws · force=${force}`);
+  console.log(
+    `[nlic] target: ${LAW_LIST.length} laws + ${ADMRUL_LIST.length} admrul · force=${force}`
+  );
   for (const name of LAW_LIST) {
     try {
       await ingestLaw(name);
     } catch (e) {
       console.error(`[nlic] ${name} failed:`, e instanceof Error ? e.message : e);
+    }
+  }
+  for (const name of ADMRUL_LIST) {
+    try {
+      await ingestAdmrul(name);
+    } catch (e) {
+      console.error(`[admrul] ${name} failed:`, e instanceof Error ? e.message : e);
     }
   }
   console.log(`\n[nlic] done.`);

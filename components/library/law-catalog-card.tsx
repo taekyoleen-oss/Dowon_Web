@@ -1,4 +1,5 @@
-import { Scale, ExternalLink } from "lucide-react";
+import { Scale, FileText, ExternalLink } from "lucide-react";
+import { classifyLaw } from "@/lib/data/law-kind";
 
 export type LawCatalogEntry = {
   law_id: string;
@@ -8,11 +9,14 @@ export type LawCatalogEntry = {
 };
 
 export function LawCatalogCard({ law }: { law: LawCatalogEntry }) {
-  // Friendly law.go.kr URL — the "법령" path takes the law name directly
-  // and opens the modern law-detail page, which is nicer than DRF HTML.
-  const externalUrl = `https://www.law.go.kr/법령/${encodeURIComponent(
-    law.law_name
-  )}`;
+  // Statutes live under /법령/, administrative rules under /행정규칙/ on
+  // law.go.kr. Each namespace also gets a distinct badge so the user
+  // can tell statute from regulator-issued operational rule at a glance.
+  const kind = classifyLaw(law.law_name);
+  const externalUrl =
+    kind === "statute"
+      ? `https://www.law.go.kr/법령/${encodeURIComponent(law.law_name)}`
+      : `https://www.law.go.kr/행정규칙/${encodeURIComponent(law.law_name)}`;
 
   return (
     <a
@@ -22,9 +26,15 @@ export function LawCatalogCard({ law }: { law: LawCatalogEntry }) {
       className="group flex h-full flex-col rounded-sm border border-paper-3 bg-paper p-5 lg:p-6 hover:border-ink transition-colors"
     >
       <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-label text-forest">
-          <Scale size={12} aria-hidden /> 법령
-        </span>
+        {kind === "statute" ? (
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-label text-forest">
+            <Scale size={12} aria-hidden /> 법령
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-label text-gold-deep">
+            <FileText size={12} aria-hidden /> 행정규칙
+          </span>
+        )}
         <ExternalLink
           size={12}
           aria-hidden

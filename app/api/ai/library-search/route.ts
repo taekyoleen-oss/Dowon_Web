@@ -28,6 +28,17 @@ type LawHit = {
   similarity: number;
 };
 
+/**
+ * Chapter divider rows (제N장/편/절/관 ...) carry no provisions but
+ * embed close to topical queries — drop them so unified search shows
+ * real articles only. Real provisions always contain a "제N조" marker.
+ */
+function isLawDivider(body: string): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return true;
+  return !/제\s*\d+(?:의\s*\d+)?\s*조/.test(t);
+}
+
 const bodySchema = z.object({
   query: z.string().min(1),
   filters: z
@@ -84,7 +95,7 @@ export async function POST(req: Request) {
         const [casesRes, columnsRes, lawsRes] = await Promise.all([
           supabase.rpc("match_cases", { query_embedding: qEmbedding, match_count: 20 }),
           supabase.rpc("match_columns", { query_embedding: qEmbedding, match_count: 20 }),
-          supabase.rpc("match_legal_provisions", { query_embedding: qEmbedding, match_count: 10 }),
+          supabase.rpc("match_legal_provisions", { query_embedding: qEmbedding, match_count: 20 }),
         ]);
         if (!casesRes.error && !columnsRes.error) {
           const merged = [...(casesRes.data ?? []), ...(columnsRes.data ?? [])];
@@ -98,6 +109,7 @@ export async function POST(req: Request) {
         if (!lawsRes.error && lawsRes.data) {
           lawHits = (lawsRes.data as LawHit[])
             .filter((h) => typeof h.similarity === "number" && h.similarity > 0.25)
+            .filter((h) => !isLawDivider(h.article_body))
             .slice(0, 6);
         }
       } catch (e) {

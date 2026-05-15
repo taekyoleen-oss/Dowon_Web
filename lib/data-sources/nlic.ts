@@ -50,7 +50,9 @@ export type NlicArticle = {
   조문번호?: string;
   조문가지번호?: string | number;
   조문제목?: string;
-  조문내용?: string;
+  // Usually a string. Some 시행령 entries return an array of strings
+  // when the article body is split across paragraphs.
+  조문내용?: string | string[];
   // NLIC returns a single object when there's only one sub-element,
   // an array when there are many. asArray() normalises this.
   항?: NlicHang | NlicHang[];
@@ -86,6 +88,38 @@ export type NlicPrecHit = {
   판결유형?: string;
   사건종류명?: string;
   판례상세링크?: string;
+};
+
+// ── 행정규칙 (감독규정·고시·세칙·예규 등) ─────────────────────────
+//
+// NLIC `target=admrul` returns metadata in a different envelope from
+// `target=law`. 조문내용 is a *flat array of strings* — one element per
+// article (and per chapter divider) — rather than the nested 조문단위/항/호
+// tree statutes use.
+export type NlicAdmrulHit = {
+  행정규칙일련번호: string;
+  행정규칙ID?: string;
+  행정규칙명: string;
+  행정규칙종류?: string;   // 고시 / 훈령 / 예규 / 세칙 / 규정 ...
+  소관부처명?: string;
+  발령일자?: string;
+  시행일자?: string;
+  행정규칙상세링크?: string;
+};
+
+export type NlicAdmrulBody = {
+  AdmRulService?: {
+    행정규칙기본정보?: {
+      행정규칙ID?: string;
+      행정규칙명?: string;
+      행정규칙일련번호?: string;
+      행정규칙종류?: string;
+      소관부처명?: string;
+      발령일자?: string;
+      시행일자?: string;
+    };
+    조문내용?: string[];
+  };
 };
 
 // ── Public functions ──────────────────────────────────────────────
@@ -178,6 +212,44 @@ export async function fetchLawBody(
   return res.json();
 }
 
+/**
+ * Search administrative rules (행정규칙) by name. Same restrict-to-name
+ * trick as searchLaws — without `search=1` the API does full-text search
+ * which dredges up unrelated 고시 that mention the keyword in passing.
+ */
+export async function searchAdmrul(name: string, display = 100) {
+  return search(
+    "admrul",
+    {
+      query: name,
+      search: "1",
+    },
+    { display }
+  );
+}
+
+/**
+ * Fetch an administrative rule's full body by 행정규칙일련번호 (preferred)
+ * or 행정규칙ID. Pass whichever the search response gave you.
+ */
+export async function fetchAdmrulBody(
+  identifier: { ID: string }
+): Promise<NlicAdmrulBody> {
+  const url = new URL(`${BASE}/lawService.do`);
+  url.searchParams.set("OC", oc());
+  url.searchParams.set("target", "admrul");
+  url.searchParams.set("type", "JSON");
+  url.searchParams.set("ID", identifier.ID);
+
+  const res = await fetch(url, {
+    headers: { "user-agent": "DowonWeb/1.0 (https://www.dowonlaw.com)" },
+    // Admrul revisions are infrequent (months) — weekly cache is fine
+    next: { revalidate: 60 * 60 * 24 * 7 },
+  });
+  if (!res.ok) throw new Error(`NLIC admrul body ${res.status}`);
+  return res.json();
+}
+
 /** Fetch a single precedent's full body by serial number (판례일련번호). */
 export async function fetchPrecedentBody(serial: string) {
   const url = new URL(`${BASE}/lawService.do`);
@@ -253,8 +325,16 @@ export function flattenLawArticles(body: NlicLawBody): Array<{
       })
       .filter(Boolean);
 
-    const articleBody = [a.조문내용 ?? "", ...hangLines]
-      .filter((s) => s && s.trim())
+    // 조문내용 is *usually* a string but some 시행령 entries (e.g. 약사법
+    // 시행령) come back as an array of strings — coerce defensively so the
+    // filter below doesn't blow up with "s.trim is not a function".
+    const bodyText = Array.isArray(a.조문내용)
+      ? a.조문내용.filter((x) => typeof x === "string").join("\n")
+      : typeof a.조문내용 === "string"
+      ? a.조문내용
+      : "";
+    const articleBody = [bodyText, ...hangLines]
+      .filter((s) => typeof s === "string" && s.trim())
       .join("\n");
 
     if (!articleBody.trim()) continue;
@@ -267,6 +347,79 @@ export function flattenLawArticles(body: NlicLawBody): Array<{
       articleNumber: num,
       articleTitle: a.조문제목 ?? "",
       articleBody,
+    });
+  }
+
+  return rows;
+}
+
+/**
+ * Flatten an admrul body into per-article rows. The 조문내용 array is a
+ * mix of (a) chapter / section dividers ("제1장 총칙", "제1절 통칙") and
+ * (b) actual articles ("제1-2조(정의) …"). We keep only (b).
+ *
+ * Article numbering in admrul commonly uses chapter-prefixed form
+ * "제N-M조" (장 N, 조 M) and 의-form "제N-M조의K". We capture either form
+ * and store the digit/separator portion as articleNumber so renders like
+ * "제1-2조" come out correctly via the same template as statutes.
+ *
+ * If 조문내용 is missing (older entries are sometimes attachment-only),
+ * fall back to empty — the script logs and skips the rule.
+ */
+export function flattenAdmrulArticles(
+  body: NlicAdmrulBody,
+  ruleId: string
+): Array<{
+  lawId: string;
+  lawName: string;
+  promulgationDate?: string;
+  enforcementDate?: string;
+  articleNumber: string;
+  articleTitle: string;
+  articleBody: string;
+}> {
+  const inner = body.AdmRulService;
+  if (!inner) return [];
+  const info = inner.행정규칙기본정보 ?? {};
+  const lawName = info.행정규칙명 ?? "";
+  // Use the caller-supplied serial number — it's what the search API
+  // returns and what we want as the stable identifier.
+  const lawId = ruleId;
+  if (!lawId || !lawName) return [];
+
+  const articles = inner.조문내용 ?? [];
+  const rows: ReturnType<typeof flattenAdmrulArticles> = [];
+  const seen = new Set<string>();
+
+  // Match the leading "제(digits[-digits…])조(의digits)?" at the start of
+  // the string. Allow optional whitespace and the parenthesized title.
+  const HEAD = /^\s*제\s*([0-9]+(?:-[0-9]+)*)\s*조(?:\s*의\s*([0-9]+))?(?:\s*\(([^)]*)\))?/;
+
+  for (const raw of articles) {
+    if (typeof raw !== "string") continue;
+    const s = raw.trim();
+    if (!s) continue;
+
+    const m = s.match(HEAD);
+    // No 제N조 marker → chapter/section divider; skip.
+    if (!m) continue;
+
+    const baseNum = m[1];
+    const branch = m[2];
+    const title = m[3] ?? "";
+    const num = branch ? `${baseNum}-${branch}` : baseNum;
+
+    if (seen.has(num)) continue;
+    seen.add(num);
+
+    rows.push({
+      lawId,
+      lawName,
+      promulgationDate: info.발령일자,
+      enforcementDate: info.시행일자,
+      articleNumber: num,
+      articleTitle: title,
+      articleBody: s,
     });
   }
 

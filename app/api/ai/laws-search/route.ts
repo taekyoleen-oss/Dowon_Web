@@ -39,6 +39,19 @@ type LawRow = {
   similarity: number;
 };
 
+/**
+ * Chapter dividers (제N장/편/절/관 ...) were ingested as separate rows
+ * by the NLIC flattener, but carry no normative content. Their bodies
+ * tend to embed close to topical queries ("보험회사 설립요건" ↔ "제3장
+ * 보험회사"), so they dominate results unless filtered. Real articles
+ * always contain a "제N조" marker in the body; dividers don't.
+ */
+function isDivider(body: string): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return true;
+  return !/제\s*\d+(?:의\s*\d+)?\s*조/.test(t);
+}
+
 export async function POST(req: Request) {
   const limited = await checkRateLimit(req, "search");
   if (limited) return limited;
@@ -66,9 +79,9 @@ export async function POST(req: Request) {
       const qEmbedding = await embed(body.query);
       const supabase = getServerSupabase();
 
-      // Over-fetch when filtering by law_name so the filter doesn't
-      // starve the result list to fewer than top_k items.
-      const fetchN = body.law_name ? body.top_k * 5 : body.top_k * 2;
+      // Over-fetch enough to absorb (a) divider-row culling and
+      // (b) law_name filtering without starving the result list.
+      const fetchN = body.law_name ? body.top_k * 5 : body.top_k * 3;
 
       const rpc = await supabase.rpc("match_legal_provisions", {
         query_embedding: qEmbedding,
@@ -84,6 +97,7 @@ export async function POST(req: Request) {
       }
       rows = rows
         .filter((r) => typeof r.similarity === "number" && r.similarity > 0.2)
+        .filter((r) => !isDivider(r.article_body))
         .slice(0, body.top_k);
 
       const results = rows.map((r) => ({

@@ -1,4 +1,5 @@
-import { Scale, ExternalLink } from "lucide-react";
+import { Scale, FileText, ExternalLink } from "lucide-react";
+import { classifyLaw, formatArticleLabel } from "@/lib/data/law-kind";
 
 /**
  * Full-article card for the /library/laws Q&A flow.
@@ -21,16 +22,22 @@ export type LawArticle = {
 };
 
 export function LawArticleCard({ article }: { article: LawArticle }) {
-  // article_number "12-2" → "제12조의 2", plain "12" → "제12조"
-  const articleLabel = `제${article.article_number.replace("-", "조의 ")}조`;
+  const kind = classifyLaw(article.law_name);
+  const articleLabel = formatArticleLabel(article.article_number, kind);
 
   return (
     <article className="rounded-sm border border-paper-3 bg-paper p-6 lg:p-7 hover:border-ink transition-colors">
       <div className="flex items-baseline justify-between gap-4">
         <div className="inline-flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-label text-forest">
-            <Scale size={12} aria-hidden /> 법령
-          </span>
+          {kind === "statute" ? (
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-label text-forest">
+              <Scale size={12} aria-hidden /> 법령
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-label text-gold-deep">
+              <FileText size={12} aria-hidden /> 행정규칙
+            </span>
+          )}
           <span className="font-mono text-[10px] uppercase tracking-label text-ink-mute">
             유사도 {Math.round(article.similarity * 100)}%
           </span>
