@@ -19,19 +19,47 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { NextResponse } from "next/server";
 
+/**
+ * Strip stray wrapping quotes that operators sometimes paste into Vercel
+ * env vars (e.g. `"https://example.com"`) — the Upstash SDK rejects the
+ * URL because it doesn't start with `https`, throwing inside
+ * `new Redis(...)` and bubbling to the route as an unhandled 500.
+ */
+function cleanEnv(v: string | undefined): string | undefined {
+  if (!v) return v;
+  const trimmed = v.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
 let _redis: Redis | null = null;
+let _redisInitFailed = false;
 function getRedis(): Redis | null {
   if (_redis) return _redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (_redisInitFailed) return null;
+  const url = cleanEnv(process.env.UPSTASH_REDIS_REST_URL);
+  const token = cleanEnv(process.env.UPSTASH_REDIS_REST_TOKEN);
   if (!url || !token) return null;
-  _redis = new Redis({ url, token });
-  return _redis;
+  try {
+    _redis = new Redis({ url, token });
+    return _redis;
+  } catch (e) {
+    // Bad URL/token format — never let rate-limit infra crash a request.
+    console.error("[rate-limit] Redis init failed:", e);
+    _redisInitFailed = true;
+    return null;
+  }
 }
 
 export function hasRateLimitConfig() {
   return Boolean(
-    process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+    cleanEnv(process.env.UPSTASH_REDIS_REST_URL) &&
+      cleanEnv(process.env.UPSTASH_REDIS_REST_TOKEN)
   );
 }
 
@@ -62,14 +90,19 @@ function getLimiter(tier: RateLimitTier): Ratelimit | null {
   };
   const { tokens, window } = cfg[tier];
 
-  const r = new Ratelimit({
-    redis,
-    limiter: Ratelimit.slidingWindow(tokens, window),
-    prefix: `rl:${tier}`,
-    analytics: true,
-  });
-  limiters.set(tier, r);
-  return r;
+  try {
+    const r = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(tokens, window),
+      prefix: `rl:${tier}`,
+      analytics: true,
+    });
+    limiters.set(tier, r);
+    return r;
+  } catch (e) {
+    console.error("[rate-limit] Ratelimit init failed:", e);
+    return null;
+  }
 }
 
 function getClientIp(req: Request): string {
@@ -86,43 +119,53 @@ function getClientIp(req: Request): string {
  *
  *   const limited = await checkRateLimit(req, "chat");
  *   if (limited) return limited;
+ *
+ * Never throws — rate-limit infra failures (bad URL, network blip,
+ * Upstash outage) degrade gracefully to "allow" rather than 500 the
+ * underlying business request.
  */
 export async function checkRateLimit(
   req: Request,
   tier: RateLimitTier,
   extraKey?: string
 ): Promise<Response | null> {
-  const limiter = getLimiter(tier);
-  if (!limiter) {
-    // Dev / unconfigured — allow request but log occasionally.
-    if (Math.random() < 0.01) {
-      console.warn("[rate-limit] Upstash not configured — requests allowed unchecked.");
+  try {
+    const limiter = getLimiter(tier);
+    if (!limiter) {
+      // Dev / unconfigured — allow request but log occasionally.
+      if (Math.random() < 0.01) {
+        console.warn("[rate-limit] Upstash not configured — requests allowed unchecked.");
+      }
+      return null;
     }
+
+    const ip = getClientIp(req);
+    const key = extraKey ? `${ip}:${extraKey}` : ip;
+
+    const { success, limit, remaining, reset } = await limiter.limit(key);
+    if (success) return null;
+
+    const retryAfterSec = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+    return NextResponse.json(
+      {
+        error: "Too many requests",
+        message:
+          "잠시 후 다시 시도해 주세요. 짧은 시간에 너무 많은 요청이 감지되었습니다.",
+        retry_after: retryAfterSec,
+      },
+      {
+        status: 429,
+        headers: {
+          "retry-after": String(retryAfterSec),
+          "x-ratelimit-limit": String(limit),
+          "x-ratelimit-remaining": String(remaining),
+          "x-ratelimit-reset": String(reset),
+        },
+      }
+    );
+  } catch (e) {
+    // Never let rate-limit infra take down a real request. Log + allow.
+    console.error("[rate-limit] check failed, allowing request:", e);
     return null;
   }
-
-  const ip = getClientIp(req);
-  const key = extraKey ? `${ip}:${extraKey}` : ip;
-
-  const { success, limit, remaining, reset } = await limiter.limit(key);
-  if (success) return null;
-
-  const retryAfterSec = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
-  return NextResponse.json(
-    {
-      error: "Too many requests",
-      message:
-        "잠시 후 다시 시도해 주세요. 짧은 시간에 너무 많은 요청이 감지되었습니다.",
-      retry_after: retryAfterSec,
-    },
-    {
-      status: 429,
-      headers: {
-        "retry-after": String(retryAfterSec),
-        "x-ratelimit-limit": String(limit),
-        "x-ratelimit-remaining": String(remaining),
-        "x-ratelimit-reset": String(reset),
-      },
-    }
-  );
 }
