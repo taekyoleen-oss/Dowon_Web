@@ -8,12 +8,12 @@ const nextConfig = {
       { protocol: "https", hostname: "**" }
     ]
   },
-  // pdf-parse v2 wraps pdfjs-dist with a worker that webpack can't bundle
-  // cleanly. Leaving it external means Next.js loads it from node_modules at
-  // runtime in the serverless function instead of trying to inline the
-  // worker file paths.
+  // unpdf wraps pdfjs-dist for serverless. Webpack can bundle it, but the
+  // safest path is to keep both packages external so Next.js loads them
+  // from node_modules at runtime — avoids pdfjs worker file resolution
+  // issues inside Vercel functions.
   experimental: {
-    serverComponentsExternalPackages: ["pdf-parse", "pdfjs-dist"]
+    serverComponentsExternalPackages: ["unpdf", "pdfjs-dist"]
   }
 };
 

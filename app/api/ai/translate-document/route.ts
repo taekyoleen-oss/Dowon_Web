@@ -125,36 +125,17 @@ async function handle(req: Request) {
     });
   }
 
-  // Extract text via pdf-parse v2 (class-based API). Dynamic import keeps
-  // the heavy pdfjs dependency out of edge bundling.
+  // Extract text via unpdf — purpose-built for serverless (no worker file
+  // path resolution, no DOM polyfills required). Returns merged plain text.
   let rawText = "";
   try {
-    const buf = Buffer.from(await file.arrayBuffer());
-    const mod = (await import("pdf-parse")) as
-      | typeof import("pdf-parse")
-      | { default: typeof import("pdf-parse") };
-    // ESM-from-CJS interop — depending on the bundler the named export may
-    // live on `.default`. Probe both shapes so the route survives either.
-    const PDFParse =
-      (mod as { PDFParse?: unknown }).PDFParse ??
-      ((mod as { default?: { PDFParse?: unknown } }).default
-        ?.PDFParse as typeof import("pdf-parse").PDFParse | undefined);
-    if (typeof PDFParse !== "function") {
-      throw new Error("pdf-parse module did not export PDFParse");
-    }
-    const Ctor = PDFParse as new (opts: { data: Uint8Array }) => {
-      getText(): Promise<{ text?: string }>;
-      destroy(): Promise<void>;
-    };
-    const parser = new Ctor({ data: new Uint8Array(buf) });
-    try {
-      const parsed = await parser.getText();
-      rawText = parsed.text ?? "";
-    } finally {
-      await parser.destroy().catch(() => undefined);
-    }
+    const buf = await file.arrayBuffer();
+    const { extractText } = await import("unpdf");
+    // mergePages: true → returns { text: string } (joined across all pages).
+    const { text } = await extractText(new Uint8Array(buf), { mergePages: true });
+    rawText = text;
   } catch (e) {
-    console.error("[translate-document] pdf-parse error:", e);
+    console.error("[translate-document] pdf extract error:", e);
     return NextResponse.json(
       {
         error: "PDF에서 텍스트를 추출할 수 없습니다. 스캔된 이미지 PDF이거나 손상된 파일일 수 있습니다.",

@@ -30,6 +30,45 @@ export function DocumentTranslatorForm() {
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<TranslateResult | null>(null);
   const [copied, setCopied] = React.useState(false);
+  const [dragOver, setDragOver] = React.useState(false);
+
+  const acceptFile = (f: File | null | undefined) => {
+    if (!f) return;
+    if (f.type && f.type !== "application/pdf" && !f.name.toLowerCase().endsWith(".pdf")) {
+      setError("PDF 파일만 지원합니다.");
+      return;
+    }
+    if (f.size > 10 * 1024 * 1024) {
+      setError("파일이 너무 큽니다 (최대 10MB).");
+      return;
+    }
+    setError(null);
+    setFile(f);
+  };
+
+  const onDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    setDragOver(true);
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const f = e.dataTransfer?.files?.[0];
+    acceptFile(f);
+  };
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -99,26 +138,37 @@ export function DocumentTranslatorForm() {
           </label>
           <label
             htmlFor="doc-pdf"
+            onDragEnter={onDragEnter}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
             className={cn(
               "mt-2 flex flex-col items-center justify-center gap-3",
-              "border-2 border-dashed border-paper-3 rounded-md py-12 px-6",
-              "cursor-pointer hover:border-ink transition-colors"
+              "border-2 border-dashed rounded-md py-12 px-6",
+              "cursor-pointer transition-colors",
+              dragOver
+                ? "border-gold-deep bg-gold-deep/5"
+                : "border-paper-3 hover:border-ink"
             )}
           >
             <Upload size={28} className="text-ink-mute" aria-hidden />
-            <p className="font-serif-ko text-body-lg text-ink-soft">
-              {file ? file.name : "PDF 파일을 클릭하거나 끌어다 놓으세요"}
+            <p className="font-serif-ko text-body-lg text-ink-soft pointer-events-none">
+              {file
+                ? file.name
+                : dragOver
+                  ? "여기에 놓으세요"
+                  : "PDF 파일을 클릭하거나 끌어다 놓으세요"}
             </p>
-            <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute">
+            <p className="font-mono text-[11px] uppercase tracking-label text-ink-mute pointer-events-none">
               최대 10MB · 텍스트 추출 후 즉시 분석
             </p>
           </label>
           <input
             id="doc-pdf"
             type="file"
-            accept="application/pdf"
+            accept="application/pdf,.pdf"
             className="sr-only"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => acceptFile(e.target.files?.[0])}
           />
         </div>
 
