@@ -26,12 +26,14 @@ export function IntakeConfirmModal({
   onClose,
   state,
   sessionId,
+  preferredLawyerSlug,
   onSubmitted,
 }: {
   open: boolean;
   onClose: () => void;
   state: IntakeState;
   sessionId: string;
+  preferredLawyerSlug?: string | null;
   onSubmitted: (result: Result) => void;
 }) {
   const summary = React.useMemo(() => summarizeForLawyer(state), [state]);
@@ -99,6 +101,7 @@ export function IntakeConfirmModal({
         sessionId,
         state,
         edits: edits || undefined,
+        preferredLawyerSlug: preferredLawyerSlug || undefined,
         contact: {
           name: String(fd.get("name") ?? ""),
           phone: String(fd.get("phone") ?? ""),

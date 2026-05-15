@@ -12,6 +12,7 @@
  *   search      : 30 req / 60s   (Library semantic search, lawyer match)
  *   advice      : 10 req / 60s   (Subrogation check — cost & abuse risk)
  *   heavy       :  5 req / 60min (Policy/Medical PDF analysis — expensive)
+ *   document    :  5 req / 60min (Public document translator — Claude PDF, no auth)
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -40,7 +41,8 @@ export type RateLimitTier =
   | "submit"
   | "search"
   | "advice"
-  | "heavy";
+  | "heavy"
+  | "document";
 
 const limiters = new Map<RateLimitTier, Ratelimit>();
 
@@ -56,6 +58,7 @@ function getLimiter(tier: RateLimitTier): Ratelimit | null {
     search:        { tokens: 30, window: "60 s" },
     advice:        { tokens: 10, window: "60 s" },
     heavy:         { tokens: 5,  window: "60 m" },
+    document:      { tokens: 5,  window: "60 m" },
   };
   const { tokens, window } = cfg[tier];
 

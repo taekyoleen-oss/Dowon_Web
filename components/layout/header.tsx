@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import * as React from "react";
-import { Menu, X, Phone, ChevronDown, ChevronRight } from "lucide-react";
+import { Menu, X, Phone, ChevronDown, ChevronRight, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Container } from "./container";
 
@@ -61,8 +61,17 @@ const navItems: NavItem[] = [
       { label: "칼럼",                href: "/library/columns" },
       { label: "강의·미디어",         href: "/library/media" },
       { label: "법령 카탈로그",        href: "/library/laws" },
-      { label: "AI 의미 검색",        href: "/library/search" },
       { label: "개인정보처리방침",     href: "/privacy" },
+    ],
+  },
+  {
+    label: "AI 도구",
+    href: "/tools/intake",
+    children: [
+      { label: "사건 정보 정리",       href: "/tools/intake" },
+      { label: "사건 유형 진단",       href: "/tools/triage" },
+      { label: "문서 쉬운 말 풀이",    href: "/tools/document-translator" },
+      { label: "AI 의미 검색",        href: "/library/search" },
     ],
   },
   {
@@ -211,6 +220,17 @@ export function Header() {
           <a href="mailto:dowonlaw@dowonlaw.com" className="hover:text-paper">
             dowonlaw@dowonlaw.com
           </a>
+          <Link
+            href="/admin"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5",
+              "border border-paper-3/30 text-paper-3",
+              "hover:bg-paper-3/10 hover:text-paper transition-colors"
+            )}
+            aria-label="어드민 로그인"
+          >
+            <Shield size={11} aria-hidden /> Admin
+          </Link>
         </Container>
       </div>
 
@@ -359,6 +379,15 @@ export function Header() {
                 <span className="font-mono text-[10px] uppercase tracking-label text-ink-mute">
                   평일 09–18시
                 </span>
+              </div>
+              <div className="mt-3">
+                <Link
+                  href="/admin"
+                  onClick={close}
+                  className="inline-flex items-center gap-1.5 rounded-sm border border-paper-3 px-3 py-1.5 font-mono text-[11px] uppercase tracking-label text-ink-soft hover:bg-paper-2"
+                >
+                  <Shield size={11} aria-hidden /> Admin
+                </Link>
               </div>
             </Container>
           </nav>

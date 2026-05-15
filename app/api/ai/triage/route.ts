@@ -9,7 +9,8 @@ import {
   ndjsonStubResponse,
   SHARED_STREAM_INSTRUCTIONS,
 } from "@/lib/ai/stream";
-import { lawyers, practiceAreaLabels, type PracticeAreaCode } from "@/lib/data/lawyers";
+import { practiceAreaLabels, type PracticeAreaCode } from "@/lib/data/lawyers";
+import { matchLawyers, PRACTICE_AREA_CODES } from "@/lib/ai/lawyer-routing";
 
 export const runtime = "nodejs";
 
@@ -29,11 +30,6 @@ const bodySchema = z.object({
     })
     .optional(),
 });
-
-const PRACTICE_AREA_CODES: PracticeAreaCode[] = [
-  "auto","long-term","fire","liability","life",
-  "medical","subrogation","investigation","advisory","criminal",
-];
 
 const SYSTEM_PROMPT = `당신은 법무법인 도원의 사건 유형 진단 챗봇입니다.
 
@@ -77,31 +73,6 @@ type ClassifyResult = {
   estimated_timeline: string;
   next_action: "consultation" | "ask_more" | "library";
 };
-
-function matchLawyers(matter: string, limit = 3) {
-  const isPracticeCode = (PRACTICE_AREA_CODES as string[]).includes(matter);
-  const scored = lawyers
-    .map((l) => {
-      let score = 0;
-      if (isPracticeCode && l.practiceAreas.includes(matter as PracticeAreaCode)) score += 3;
-      if (matter === "medical" && l.specialQualifications?.includes("의사")) score += 2;
-      if (l.isPartner) score += 0.5;
-      return { l, score };
-    })
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-
-  return scored.map(({ l, score }) => ({
-    id: l.slug,
-    name: l.nameKo,
-    match_reason:
-      isPracticeCode && l.practiceAreas.includes(matter as PracticeAreaCode)
-        ? `${practiceAreaLabels[matter as PracticeAreaCode]} 전담 변호사`
-        : "관련 분야 변호사",
-    match_score: Number((score / 5).toFixed(2)),
-  }));
-}
 
 function newConversationId() {
   return "trg_" + Math.random().toString(36).slice(2, 11) + Date.now().toString(36);

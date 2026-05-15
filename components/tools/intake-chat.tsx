@@ -2,15 +2,35 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Send, Sparkles, CheckCircle2, RotateCw } from "lucide-react";
+import { Send, Sparkles, CheckCircle2, RotateCw, ShieldAlert } from "lucide-react";
 import { LegalDisclaimer } from "@/components/ai/legal-disclaimer";
 import { IntakeProgress } from "./intake-progress";
+import { IntakeDeadlines } from "./intake-deadlines";
+import { IntakeChecklist } from "./intake-checklist";
+import { IntakeLawyerSuggest } from "./intake-lawyer-suggest";
 import { IntakeConfirmModal } from "./intake-confirm-modal";
 import { emptyIntakeState, type IntakeState } from "@/lib/ai/intake-slots";
+import { maskPII } from "@/lib/ai/pii-mask";
 import { consumeNdjsonStream } from "@/lib/ai/stream-client";
 import { cn } from "@/lib/utils";
 
 type Message = { role: "user" | "assistant"; content: string };
+
+type SuggestedLawyer = {
+  id: string;
+  name: string;
+  match_reason: string;
+  match_score: number;
+};
+
+type ChecklistEntry = {
+  id: string;
+  label: string;
+  required: boolean;
+  matched: boolean;
+};
+
+type Deadline = { label: string; date: string; source?: string };
 
 const STORAGE_KEY = "dowon_intake_v1";
 const STORAGE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
@@ -81,6 +101,11 @@ export function IntakeChat() {
   const [loading, setLoading] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [submitted, setSubmitted] = React.useState<{ ok: boolean; message: string } | null>(null);
+  const [suggestedLawyers, setSuggestedLawyers] = React.useState<SuggestedLawyer[]>([]);
+  const [checklist, setChecklist] = React.useState<ChecklistEntry[]>([]);
+  const [deadlines, setDeadlines] = React.useState<Deadline[]>([]);
+  const [preferredLawyer, setPreferredLawyer] = React.useState<string | null>(null);
+  const [piiNotice, setPiiNotice] = React.useState<string | null>(null);
   const listRef = React.useRef<HTMLUListElement | null>(null);
   const isFirstRender = React.useRef(true);
 
@@ -127,8 +152,19 @@ export function IntakeChat() {
     if (!text.trim() || loading || submitted?.ok) return;
     setInput("");
     setLoading(true);
+
+    // Client-side PII mask — raw text never leaves the browser.
+    const { masked, hits } = maskPII(text);
+    if (hits.length > 0) {
+      setPiiNotice(
+        `민감정보(${hits.map((h) => h.label).join(", ")})가 자동 마스킹되었습니다. 다음부터는 입력하지 않으셔도 괜찮습니다.`
+      );
+    } else {
+      setPiiNotice(null);
+    }
+
     const history = messages.slice(1); // exclude greeting
-    const userMsg: Message = { role: "user", content: text };
+    const userMsg: Message = { role: "user", content: masked };
     const assistantMsg: Message = { role: "assistant", content: "" };
     let assistantIdx = -1;
 
@@ -146,7 +182,7 @@ export function IntakeChat() {
       const res = await fetch("/api/ai/intake", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text, history, state, sessionId }),
+        body: JSON.stringify({ message: masked, history, state, sessionId }),
       });
 
       await consumeNdjsonStream(res, {
@@ -169,6 +205,15 @@ export function IntakeChat() {
           }
           if (payload.state && typeof payload.state === "object") {
             setState(payload.state as IntakeState);
+          }
+          if (Array.isArray(payload.suggested_lawyers)) {
+            setSuggestedLawyers(payload.suggested_lawyers as SuggestedLawyer[]);
+          }
+          if (Array.isArray(payload.checklist)) {
+            setChecklist(payload.checklist as ChecklistEntry[]);
+          }
+          if (Array.isArray(payload.deadlines)) {
+            setDeadlines(payload.deadlines as Deadline[]);
           }
           // If we had no streamed text (rare), use the consolidated reply.
           if (!accumulated && typeof payload.reply === "string" && payload.reply) {
@@ -291,7 +336,7 @@ export function IntakeChat() {
 
           <ul
             ref={listRef}
-            className="flex-1 px-4 lg:px-6 py-6 space-y-5 max-h-[60vh] overflow-y-auto overscroll-contain"
+            className="flex-1 px-4 lg:px-6 py-5 lg:py-6 space-y-5 max-h-[55vh] lg:max-h-[60vh] overflow-y-auto overscroll-contain"
           >
             {messages.map((m, i) => (
               <li
@@ -339,36 +384,63 @@ export function IntakeChat() {
             </div>
           )}
 
+          {piiNotice && (
+            <div
+              role="status"
+              className="mx-4 lg:mx-6 mb-3 rounded-sm border border-gold bg-paper-2 p-3 flex items-start gap-2.5"
+            >
+              <ShieldAlert size={14} className="text-gold-deep shrink-0 mt-0.5" aria-hidden />
+              <p className="font-serif-ko text-[13px] text-ink-soft leading-base">{piiNotice}</p>
+            </div>
+          )}
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
               send(input);
             }}
-            className="border-t border-paper-3 px-4 lg:px-6 py-3 flex gap-2"
+            className="border-t border-paper-3 px-4 lg:px-6 py-3 flex flex-col gap-1.5"
           >
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                state.ready_for_summary
-                  ? "추가로 알려주실 내용이 있으면 입력 (또는 오른쪽 '정리해서 확인하기')"
-                  : "편하게 말씀해 주세요..."
-              }
-              className="flex-1 px-4 py-3 bg-paper border border-paper-3 rounded-sm font-serif-ko text-[15px] text-ink focus:outline-none focus:border-ink"
-            />
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="inline-flex items-center gap-1.5 px-5 py-3 bg-ink text-paper rounded-sm font-sans-ko text-[14px] font-medium hover:bg-ink-soft transition-colors disabled:opacity-60"
-            >
-              <Send size={14} /> 전송
-            </button>
+            <div className="flex gap-2">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={
+                  state.ready_for_summary
+                    ? "추가로 알려주실 내용이 있으면 입력 (또는 오른쪽 '정리해서 확인하기')"
+                    : "편하게 말씀해 주세요..."
+                }
+                className="flex-1 px-4 py-3 bg-paper border border-paper-3 rounded-sm font-serif-ko text-[15px] text-ink focus:outline-none focus:border-ink"
+              />
+              <button
+                type="submit"
+                disabled={loading || !input.trim()}
+                className="inline-flex items-center gap-1.5 px-5 py-3 bg-ink text-paper rounded-sm font-sans-ko text-[14px] font-medium hover:bg-ink-soft transition-colors disabled:opacity-60"
+              >
+                <Send size={14} /> 전송
+              </button>
+            </div>
+            <p className="font-mono text-[10.5px] uppercase tracking-label text-ink-mute">
+              주민번호·계좌·카드·사건번호 등 민감정보는 입력하지 마세요
+            </p>
           </form>
         </div>
 
         {/* Side panel */}
         <aside className="space-y-4">
           <IntakeProgress state={state} />
+
+          {deadlines.length > 0 && <IntakeDeadlines deadlines={deadlines} />}
+
+          {checklist.length > 0 && <IntakeChecklist items={checklist} />}
+
+          {suggestedLawyers.length > 0 && (
+            <IntakeLawyerSuggest
+              lawyers={suggestedLawyers}
+              selectedSlug={preferredLawyer}
+              onSelect={setPreferredLawyer}
+            />
+          )}
 
           <button
             type="button"
@@ -405,6 +477,7 @@ export function IntakeChat() {
         onClose={() => setConfirmOpen(false)}
         state={state}
         sessionId={sessionId ?? ""}
+        preferredLawyerSlug={preferredLawyer}
         onSubmitted={(r) => {
           setSubmitted(r);
           if (r.ok) setConfirmOpen(false);

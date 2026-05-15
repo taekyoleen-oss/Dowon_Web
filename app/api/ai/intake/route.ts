@@ -17,6 +17,9 @@ import {
   matterTypeLabels,
   type IntakeState,
 } from "@/lib/ai/intake-slots";
+import { maskPII } from "@/lib/ai/pii-mask";
+import { matchLawyersByMatter } from "@/lib/ai/lawyer-routing";
+import { matchChecklist } from "@/lib/data/checklists";
 
 export const runtime = "nodejs";
 
@@ -61,6 +64,15 @@ const SYSTEM_PROMPT = `당신은 법무법인 도원의 사건 정보 수집 도
 7. evidence: { items[], missing[], notes }
 8. desired_outcome: { options[](compensation|settlement|criminal|retraction|injunction|other), notes }
 9. prior_actions: { police_report, insurance_claim, settlement_attempt, other_lawyer, notes }
+10. deadlines: 사용자가 명시한 행동 마감일만 (시효 추정 금지)
+    - 예: 출석요구일 / 답변서 제출일 / 항소 기한 등 — 사용자 발화에 등장한 날짜만
+    - 시효(공소시효·소멸시효)를 추정해서 deadlines 에 추가하지 마십시오. 일반 정보 안내가 필요하면 본문에서만 언급하고 deadlines 에 채우지 마십시오.
+    - date 는 반드시 YYYY-MM-DD. 사용자가 "다음 주 화요일" 같이 상대 표현만 했다면 채우지 마십시오.
+
+[추가 가드레일 — 본 확장 기능용]
+- 결론적 법률 판단 문구 금지: "이기실 수 있습니다", "유리합니다", "승소 확률", "보장" 등
+- 사용자가 주민번호·계좌·구체 사건번호를 입력한 경우(자동 마스킹되어 표시될 수 있음): "민감정보는 입력하지 않으셔도 됩니다"로 안내하고 그 정보를 본문에서 반복 인용하지 마십시오.
+- 시급성 안내 시 마무리 멘트로 "시효·기간 적용 여부는 변호사 확인이 필요합니다" 를 1회 덧붙입니다.
 
 ${SHARED_STREAM_INSTRUCTIONS}
 
@@ -75,9 +87,10 @@ ${SHARED_STREAM_INSTRUCTIONS}
     "damages": { ... },
     "evidence": { ... },
     "desired_outcome": { ... },
-    "prior_actions": { ... }
+    "prior_actions": { ... },
+    "deadlines": [ { "label": "...", "date": "YYYY-MM-DD", "source": "..." } ]
   },
-  "next_question_target": "matter_type" | "when" | "where" | "parties" | "narrative" | "damages" | "evidence" | "desired_outcome" | "prior_actions" | "summary" | "done",
+  "next_question_target": "matter_type" | "when" | "where" | "parties" | "narrative" | "damages" | "evidence" | "desired_outcome" | "prior_actions" | "deadlines" | "summary" | "done",
   "should_offer_summary": true | false
 }
 
@@ -109,6 +122,11 @@ export async function POST(req: Request) {
 
   const sessionId = body.sessionId ?? newSessionId();
   const priorState = (body.state as IntakeState | undefined) ?? emptyIntakeState();
+
+  // Server-side PII re-mask. The client should already mask, but we never
+  // trust callers — anything sent to Claude or persisted to Supabase passes
+  // through this filter as a belt-and-suspenders.
+  const { masked: userMessage, hits: piiHits } = maskPII(body.message);
 
   // Stub fallback — same NDJSON wire so the client doesn't need branching.
   if (!hasAnthropicConfig()) {
@@ -142,7 +160,10 @@ export async function POST(req: Request) {
       {
         role: "user",
         content:
-          `[현재까지 정리된 상태]\n${JSON.stringify(priorState, null, 2)}\n\n[사용자의 새 발화]\n${body.message}`,
+          `[현재까지 정리된 상태]\n${JSON.stringify(priorState, null, 2)}\n\n[사용자의 새 발화]\n${userMessage}` +
+          (piiHits.length > 0
+            ? `\n\n[시스템 안내] 사용자 발화에 민감정보(${piiHits.map((h) => h.label).join(", ")})가 포함되어 마스킹되었습니다. 사용자에게 한 번만 "민감정보는 입력하지 않으셔도 됩니다"라고 안내하고 본문에서 그 정보를 다시 인용하지 마십시오.`
+            : ""),
       },
     ],
   });
@@ -153,12 +174,23 @@ export async function POST(req: Request) {
       const nextState = mergeIntakeState(priorState, delta);
       const offerSummary =
         (parsed?.should_offer_summary ?? false) || nextState.ready_for_summary;
+      const suggestedLawyers = matchLawyersByMatter(nextState.matter_type, 3);
+      const checklist = matchChecklist(nextState.matter_type, nextState.evidence.items);
       return {
         sessionId,
         state: nextState,
         completeness: nextState.completeness,
         next_question_target: parsed?.next_question_target ?? "narrative",
         should_offer_summary: offerSummary,
+        suggested_lawyers: suggestedLawyers,
+        checklist: checklist.map(({ item, matched }) => ({
+          id: item.id,
+          label: item.label,
+          required: item.required,
+          matched,
+        })),
+        deadlines: nextState.deadlines ?? [],
+        pii_hits: piiHits,
         legal_notice: SYSTEM_FOOTER,
         // expose the assembled reply so the client can rebuild full text after
         // a network blip (the held-back tail) — also handy for audit logs.
@@ -173,18 +205,19 @@ export async function POST(req: Request) {
       // Audit (best-effort)
       recordAudit({
         toolName: "intake",
-        input: { sessionId, hasState: !!body.state },
+        input: { sessionId, hasState: !!body.state, piiHits: piiHits.length },
         output: { matter_type: nextState.matter_type, completeness: nextState.completeness },
         durationMs,
       }).catch(() => undefined);
 
-      // Persist conversation turn (best-effort)
+      // Persist conversation turn (best-effort). Only the MASKED message is
+      // stored — raw user input never lands in Supabase.
       if (hasSupabaseConfig()) {
         try {
           const supabase = getServerSupabase();
           const newMessages = [
             ...body.history,
-            { role: "user" as const, content: body.message },
+            { role: "user" as const, content: userMessage },
             { role: "assistant" as const, content: fullReply },
           ];
           await supabase

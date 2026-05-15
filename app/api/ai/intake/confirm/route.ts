@@ -19,6 +19,7 @@ const bodySchema = z.object({
   sessionId: z.string().min(1),
   state: z.unknown(),                  // server validates structurally below
   edits: z.string().optional(),        // user's optional last-mile edit to the narrative
+  preferredLawyerSlug: z.string().optional(),  // user's lawyer preference from the side-panel suggestions
   contact: contactSchema,
 });
 
@@ -88,6 +89,7 @@ export async function POST(req: Request) {
         email: body.contact.email ?? "",
         preferredMethod: body.contact.preferredMethod,
         intakeSessionId: body.sessionId,
+        preferredLawyerSlug: body.preferredLawyerSlug ?? null,
       };
 
       const matterLabel = summary.sections.find((s) => s.label === "사건 유형")?.value ?? "기타";
@@ -138,6 +140,9 @@ export async function POST(req: Request) {
         { name: "이메일",     value: body.contact.email ?? "—" },
         { name: "희망 방식",  value: body.contact.preferredMethod },
         { name: "세션 ID",   value: body.sessionId },
+        ...(body.preferredLawyerSlug
+          ? [{ name: "의뢰인 선호 변호사", value: body.preferredLawyerSlug }]
+          : []),
         ...summary.sections.map((s) => ({ name: s.label, value: s.value })),
       ],
     });

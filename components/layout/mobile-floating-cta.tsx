@@ -13,14 +13,15 @@ import { cn } from "@/lib/utils";
  *
  * Hidden on:
  *   - /admin/* (admins don't need it)
- *   - /tools/intake (already in the intake flow)
+ *   - /tools/* (already inside an AI tool flow — intake, triage,
+ *     document-translator, etc.)
  *   - /contact/* (already on the contact form)
  */
 export function MobileFloatingCta() {
   const pathname = usePathname();
   const hidden =
     pathname?.startsWith("/admin") ||
-    pathname === "/tools/intake" ||
+    pathname?.startsWith("/tools") ||
     pathname?.startsWith("/contact");
 
   if (hidden) return null;

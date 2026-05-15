@@ -96,6 +96,13 @@ export type IntakeState = {
     notes?: string | null;
   };
 
+  // 10 시급성 — 사용자가 명시한 날짜만 (시효는 추정 금지). Optional.
+  deadlines?: Array<{
+    label: string;      // 예: "출석요구일", "답변서 제출일"
+    date: string;       // YYYY-MM-DD
+    source?: string;    // 발화 원본 인용 (감사용)
+  }> | null;
+
   // Meta — Claude returns; client uses to drive UI
   completeness: number;             // 0-1
   ready_for_summary: boolean;
@@ -118,6 +125,7 @@ export function emptyIntakeState(): IntakeState {
       other_lawyer: null,
       notes: null,
     },
+    deadlines: null,
     completeness: 0,
     ready_for_summary: false,
   };
@@ -161,6 +169,28 @@ export function mergeIntakeState(
     if (v === undefined) continue;
     if (v === null) {
       // explicit null: skip — Claude wasn't sure
+      continue;
+    }
+    if (key === "deadlines" && Array.isArray(v)) {
+      // Union-merge by (label,date) so a turn that re-mentions a deadline
+      // doesn't create duplicates. Filter out malformed dates.
+      type Deadline = NonNullable<IntakeState["deadlines"]>[number];
+      const incoming = v as unknown as Deadline[];
+      const merged: Deadline[] = [
+        ...(prev.deadlines ?? []),
+        ...incoming,
+      ].filter(
+        (d): d is Deadline =>
+          !!d && typeof d.label === "string" && typeof d.date === "string" &&
+          /^\d{4}-\d{2}-\d{2}$/.test(d.date)
+      );
+      const seen = new Set<string>();
+      next.deadlines = merged.filter((d) => {
+        const k = `${d.label}|${d.date}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
       continue;
     }
     if (typeof v === "object" && !Array.isArray(v)) {
@@ -258,6 +288,12 @@ export function summarizeForLawyer(state: IntakeState): {
   ].filter(Boolean);
   if (prior.length > 0) {
     sections.push({ label: "사전 시도", value: prior.join(", ") });
+  }
+  if (state.deadlines && state.deadlines.length > 0) {
+    const v = state.deadlines
+      .map((d) => `${d.date} — ${d.label}`)
+      .join("\n");
+    sections.push({ label: "확인된 일정 (시효 적용 여부는 변호사 검토 필요)", value: v });
   }
 
   const title = state.matter_type
