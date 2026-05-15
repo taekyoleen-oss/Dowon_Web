@@ -7,6 +7,13 @@ const nextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "**" }
     ]
+  },
+  // pdf-parse v2 wraps pdfjs-dist with a worker that webpack can't bundle
+  // cleanly. Leaving it external means Next.js loads it from node_modules at
+  // runtime in the serverless function instead of trying to inline the
+  // worker file paths.
+  experimental: {
+    serverComponentsExternalPackages: ["pdf-parse", "pdfjs-dist"]
   }
 };
 

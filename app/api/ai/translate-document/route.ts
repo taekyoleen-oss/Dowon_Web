@@ -58,6 +58,29 @@ type TranslateResult = {
 };
 
 export async function POST(req: Request) {
+  try {
+    return await handle(req);
+  } catch (e) {
+    // Top-level catch — without this, a Claude/JSON/parser failure leaks as
+    // a bare 500 with no message, which is what the user sees in the UI.
+    console.error("[translate-document] unhandled:", e);
+    const detail =
+      process.env.NODE_ENV === "production"
+        ? undefined
+        : e instanceof Error
+          ? e.message
+          : String(e);
+    return NextResponse.json(
+      {
+        error: "분석 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        detail,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+async function handle(req: Request) {
   const limited = await checkRateLimit(req, "document");
   if (limited) return limited;
 
@@ -107,8 +130,23 @@ export async function POST(req: Request) {
   let rawText = "";
   try {
     const buf = Buffer.from(await file.arrayBuffer());
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: new Uint8Array(buf) });
+    const mod = (await import("pdf-parse")) as
+      | typeof import("pdf-parse")
+      | { default: typeof import("pdf-parse") };
+    // ESM-from-CJS interop — depending on the bundler the named export may
+    // live on `.default`. Probe both shapes so the route survives either.
+    const PDFParse =
+      (mod as { PDFParse?: unknown }).PDFParse ??
+      ((mod as { default?: { PDFParse?: unknown } }).default
+        ?.PDFParse as typeof import("pdf-parse").PDFParse | undefined);
+    if (typeof PDFParse !== "function") {
+      throw new Error("pdf-parse module did not export PDFParse");
+    }
+    const Ctor = PDFParse as new (opts: { data: Uint8Array }) => {
+      getText(): Promise<{ text?: string }>;
+      destroy(): Promise<void>;
+    };
+    const parser = new Ctor({ data: new Uint8Array(buf) });
     try {
       const parsed = await parser.getText();
       rawText = parsed.text ?? "";
@@ -118,7 +156,15 @@ export async function POST(req: Request) {
   } catch (e) {
     console.error("[translate-document] pdf-parse error:", e);
     return NextResponse.json(
-      { error: "PDF에서 텍스트를 추출할 수 없습니다. 스캔된 이미지 PDF일 수 있습니다." },
+      {
+        error: "PDF에서 텍스트를 추출할 수 없습니다. 스캔된 이미지 PDF이거나 손상된 파일일 수 있습니다.",
+        detail:
+          process.env.NODE_ENV === "production"
+            ? undefined
+            : e instanceof Error
+              ? e.message
+              : String(e),
+      },
       { status: 422 }
     );
   }
