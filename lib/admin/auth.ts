@@ -26,11 +26,21 @@ export function getCurrentAdminEmail(): string | null {
 }
 
 export function setAdminCookie(email: string) {
+  // path "/" so the cookie is sent to /api/admin/* endpoints too, not just
+  // page routes under /admin. Otherwise admin fetches return 401.
+  //
+  // Migration: a prior version scoped this cookie to path "/admin". Browsers
+  // treat different paths as distinct cookies even when names match, so we
+  // explicitly expire the old one before issuing the new one.
+  cookies().set(COOKIE_NAME, "", {
+    path: "/admin",
+    maxAge: 0,
+  });
   cookies().set(COOKIE_NAME, email.toLowerCase(), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    path: "/admin",
+    path: "/",
     maxAge: 60 * 60 * 8,
   });
 }
