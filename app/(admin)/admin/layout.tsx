@@ -9,6 +9,7 @@ export const metadata = {
 const nav = [
   { href: "/admin",                label: "대시보드" },
   { href: "/admin/consultations",  label: "상담 신청" },
+  { href: "/admin/internal",       label: "내부망 업무" },
   { href: "/admin/briefs",         label: "서면 작성" },
   { href: "/admin/cases",          label: "판례 관리" },
   { href: "/admin/columns",        label: "칼럼 관리" },
