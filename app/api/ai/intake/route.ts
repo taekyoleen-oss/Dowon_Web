@@ -22,6 +22,7 @@ import { matchLawyersByMatter } from "@/lib/ai/lawyer-routing";
 import { matchChecklist } from "@/lib/data/checklists";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -149,24 +150,75 @@ export async function POST(req: Request) {
     ]);
   }
 
-  const anthropic = getAnthropic();
-  const t0 = Date.now();
-  const aiStream = anthropic.messages.stream({
-    model: CLAUDE_MODEL,
-    max_tokens: 1500,
-    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-    messages: [
-      ...body.history.map((m) => ({ role: m.role, content: m.content })),
+  let anthropic: ReturnType<typeof getAnthropic>;
+  try {
+    anthropic = getAnthropic();
+  } catch (e) {
+    console.error("[intake] anthropic init failed:", e);
+    return ndjsonStubResponse([
       {
-        role: "user",
-        content:
-          `[현재까지 정리된 상태]\n${JSON.stringify(priorState, null, 2)}\n\n[사용자의 새 발화]\n${userMessage}` +
-          (piiHits.length > 0
-            ? `\n\n[시스템 안내] 사용자 발화에 민감정보(${piiHits.map((h) => h.label).join(", ")})가 포함되어 마스킹되었습니다. 사용자에게 한 번만 "민감정보는 입력하지 않으셔도 됩니다"라고 안내하고 본문에서 그 정보를 다시 인용하지 마십시오.`
-            : ""),
+        type: "token",
+        text: "일시적인 오류로 도우미를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.",
       },
-    ],
-  });
+      {
+        type: "state",
+        sessionId,
+        state: priorState,
+        completeness: priorState.completeness,
+        next_question_target: "narrative",
+        should_offer_summary: false,
+        suggested_lawyers: [],
+        checklist: [],
+        deadlines: [],
+        pii_hits: piiHits,
+        legal_notice: SYSTEM_FOOTER,
+        error: e instanceof Error ? e.message : String(e),
+      },
+    ]);
+  }
+
+  const t0 = Date.now();
+  let aiStream: ReturnType<typeof anthropic.messages.stream>;
+  try {
+    aiStream = anthropic.messages.stream({
+      model: CLAUDE_MODEL,
+      max_tokens: 1500,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      messages: [
+        ...body.history.map((m) => ({ role: m.role, content: m.content })),
+        {
+          role: "user",
+          content:
+            `[현재까지 정리된 상태]\n${JSON.stringify(priorState, null, 2)}\n\n[사용자의 새 발화]\n${userMessage}` +
+            (piiHits.length > 0
+              ? `\n\n[시스템 안내] 사용자 발화에 민감정보(${piiHits.map((h) => h.label).join(", ")})가 포함되어 마스킹되었습니다. 사용자에게 한 번만 "민감정보는 입력하지 않으셔도 됩니다"라고 안내하고 본문에서 그 정보를 다시 인용하지 마십시오.`
+              : ""),
+        },
+      ],
+    });
+  } catch (e) {
+    console.error("[intake] anthropic.messages.stream failed:", e);
+    return ndjsonStubResponse([
+      {
+        type: "token",
+        text: "일시적인 오류로 도우미를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      },
+      {
+        type: "state",
+        sessionId,
+        state: priorState,
+        completeness: priorState.completeness,
+        next_question_target: "narrative",
+        should_offer_summary: false,
+        suggested_lawyers: [],
+        checklist: [],
+        deadlines: [],
+        pii_hits: piiHits,
+        legal_notice: SYSTEM_FOOTER,
+        error: e instanceof Error ? e.message : String(e),
+      },
+    ]);
+  }
 
   const stream = ndjsonFromAnthropicStream<IntakeStateJson>(aiStream, {
     enrich: (parsed, fullReply) => {

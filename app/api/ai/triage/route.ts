@@ -9,10 +9,11 @@ import {
   ndjsonStubResponse,
   SHARED_STREAM_INSTRUCTIONS,
 } from "@/lib/ai/stream";
-import { practiceAreaLabels, type PracticeAreaCode } from "@/lib/data/lawyers";
+import { practiceAreaLabels } from "@/lib/data/lawyers";
 import { matchLawyers, PRACTICE_AREA_CODES } from "@/lib/ai/lawyer-routing";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -117,42 +118,67 @@ export async function POST(req: Request) {
     ]);
   }
 
-  const anthropic = getAnthropic();
-  const t0 = Date.now();
-  const aiStream = anthropic.messages.stream({
-    model: CLAUDE_MODEL,
-    max_tokens: 1500,
-    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-    messages: [
-      ...body.history.map((m) => ({ role: m.role, content: m.content })),
-      { role: "user", content: body.message },
-    ],
-  });
+  try {
+    const anthropic = getAnthropic();
+    const t0 = Date.now();
+    const aiStream = anthropic.messages.stream({
+      model: CLAUDE_MODEL,
+      max_tokens: 1500,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      messages: [
+        ...body.history.map((m) => ({ role: m.role, content: m.content })),
+        { role: "user", content: body.message },
+      ],
+    });
 
-  const stream = ndjsonFromAnthropicStream<ClassifyResult>(aiStream, {
-    enrich: (parsed) => {
-      const matter = parsed?.matter_type ?? "unknown";
-      return {
+    const stream = ndjsonFromAnthropicStream<ClassifyResult>(aiStream, {
+      enrich: (parsed) => {
+        const matter = parsed?.matter_type ?? "unknown";
+        return {
+          conversationId,
+          matter_type: matter,
+          confidence: parsed?.confidence ?? 0,
+          needs_more_info: parsed?.needs_more_info ?? true,
+          needed_documents: parsed?.needed_documents ?? [],
+          estimated_timeline: parsed?.estimated_timeline ?? "—",
+          next_action: parsed?.next_action ?? "ask_more",
+          suggested_lawyers: matchLawyers(matter),
+          legal_notice: SYSTEM_FOOTER,
+        };
+      },
+      onFinal: (parsed) => {
+        recordAudit({
+          toolName: "triage",
+          input: { message: body.message.slice(0, 200), persona: body.context?.persona },
+          output: { matter_type: parsed?.matter_type, confidence: parsed?.confidence },
+          durationMs: Date.now() - t0,
+        }).catch(() => undefined);
+      },
+    });
+
+    return ndjsonResponse(stream);
+  } catch (e) {
+    console.error("[triage] route failed before stream start:", e);
+    // Wire-compatible NDJSON stub so the client renders an error toast
+    // instead of choking on an HTML 500 body.
+    return ndjsonStubResponse([
+      {
+        type: "token",
+        text: "일시적인 오류로 사건 유형 안내를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      },
+      {
+        type: "state",
         conversationId,
-        matter_type: matter,
-        confidence: parsed?.confidence ?? 0,
-        needs_more_info: parsed?.needs_more_info ?? true,
-        needed_documents: parsed?.needed_documents ?? [],
-        estimated_timeline: parsed?.estimated_timeline ?? "—",
-        next_action: parsed?.next_action ?? "ask_more",
-        suggested_lawyers: matchLawyers(matter),
+        matter_type: "unknown",
+        confidence: 0,
+        needs_more_info: true,
+        needed_documents: [],
+        estimated_timeline: "—",
+        next_action: "consultation",
+        suggested_lawyers: [],
         legal_notice: SYSTEM_FOOTER,
-      };
-    },
-    onFinal: (parsed) => {
-      recordAudit({
-        toolName: "triage",
-        input: { message: body.message.slice(0, 200), persona: body.context?.persona },
-        output: { matter_type: parsed?.matter_type, confidence: parsed?.confidence },
-        durationMs: Date.now() - t0,
-      }).catch(() => undefined);
-    },
-  });
-
-  return ndjsonResponse(stream);
+        error: e instanceof Error ? e.message : String(e),
+      },
+    ]);
+  }
 }
