@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSupabase, hasSupabaseConfig } from "@/lib/supabase/server";
 import { embed, hasOpenAIConfig } from "@/lib/ai/openai";
-import { withAudit } from "@/lib/ai/audit";
+import { recordAudit } from "@/lib/ai/audit";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
-// Embedding + RPC + audit insert can take a few seconds on cold start.
-export const maxDuration = 30;
+// Cold-start embed + RPC can sit close to 30s. Match the other AI routes at 60.
+export const maxDuration = 60;
 
 /**
  * Focused statute Q&A — only searches legal_provisions (no cases/columns).
@@ -74,56 +74,65 @@ export async function POST(req: Request) {
   // audit insert) returns a JSON body. Without this, an uncaught throw
   // bubbles to Next.js as a 500 with empty body, which the client
   // sees as "Unexpected end of JSON input".
+  //
+  // Audit is fire-and-forget (recordAudit().catch) instead of withAudit()
+  // so a slow Supabase insert can't push the response path over the
+  // Vercel function timeout. The audit row still lands, just after the
+  // user already has their results.
+  const t0 = Date.now();
   try {
-    const result = await withAudit("laws-search", body, async () => {
-      const qEmbedding = await embed(body.query);
-      const supabase = getServerSupabase();
+    const qEmbedding = await embed(body.query);
+    const supabase = getServerSupabase();
 
-      // Over-fetch enough to absorb (a) divider-row culling and
-      // (b) law_name filtering without starving the result list.
-      const fetchN = body.law_name ? body.top_k * 5 : body.top_k * 3;
+    // Over-fetch enough to absorb (a) divider-row culling and
+    // (b) law_name filtering without starving the result list.
+    const fetchN = body.law_name ? body.top_k * 5 : body.top_k * 3;
 
-      const rpc = await supabase.rpc("match_legal_provisions", {
-        query_embedding: qEmbedding,
-        match_count: Math.min(fetchN, 50),
-      });
-      if (rpc.error) {
-        throw new Error(`match_legal_provisions failed: ${rpc.error.message}`);
-      }
-
-      let rows = (rpc.data ?? []) as LawRow[];
-      if (body.law_name) {
-        rows = rows.filter((r) => r.law_name === body.law_name);
-      }
-      rows = rows
-        .filter((r) => typeof r.similarity === "number" && r.similarity > 0.2)
-        .filter((r) => !isDivider(r.article_body))
-        .slice(0, body.top_k);
-
-      const results = rows.map((r) => ({
-        id: r.id,
-        law_name: r.law_name,
-        article_number: r.article_number,
-        article_title: r.article_title ?? "",
-        article_body: r.article_body,
-        enforcement_date: r.enforcement_date,
-        similarity: Number(r.similarity?.toFixed(3) ?? 0),
-        source_url: r.source_url,
-      }));
-
-      return { output: { results } };
+    const rpc = await supabase.rpc("match_legal_provisions", {
+      query_embedding: qEmbedding,
+      match_count: Math.min(fetchN, 50),
     });
+    if (rpc.error) {
+      throw new Error(`match_legal_provisions failed: ${rpc.error.message}`);
+    }
 
-    return NextResponse.json(result);
+    let rows = (rpc.data ?? []) as LawRow[];
+    if (body.law_name) {
+      rows = rows.filter((r) => r.law_name === body.law_name);
+    }
+    rows = rows
+      .filter((r) => typeof r.similarity === "number" && r.similarity > 0.2)
+      .filter((r) => !isDivider(r.article_body))
+      .slice(0, body.top_k);
+
+    const results = rows.map((r) => ({
+      id: r.id,
+      law_name: r.law_name,
+      article_number: r.article_number,
+      article_title: r.article_title ?? "",
+      article_body: r.article_body,
+      enforcement_date: r.enforcement_date,
+      similarity: Number(r.similarity?.toFixed(3) ?? 0),
+      source_url: r.source_url,
+    }));
+
+    // Fire-and-forget audit — never blocks the response.
+    recordAudit({
+      toolName: "laws-search",
+      input: body,
+      output: { count: results.length },
+      durationMs: Date.now() - t0,
+    }).catch((err) => console.warn("[laws-search] audit warning:", err));
+
+    return NextResponse.json({ results });
   } catch (e) {
-    console.error("[laws-search] failed:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? e.stack : undefined;
+    console.error("[laws-search] failed:", msg, stack);
     return NextResponse.json(
       {
         results: [],
-        error:
-          e instanceof Error
-            ? e.message
-            : "검색 중 알 수 없는 오류가 발생했습니다.",
+        error: msg || "검색 중 알 수 없는 오류가 발생했습니다.",
       },
       { status: 500 }
     );
