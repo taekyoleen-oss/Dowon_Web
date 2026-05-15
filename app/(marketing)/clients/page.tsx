@@ -132,7 +132,7 @@ export default function ClientsPage() {
                     return (
                       <li
                         key={idx}
-                        className="aspect-[16/9] flex items-center justify-center rounded-sm border border-paper-3 bg-paper p-4 transition-colors hover:border-ink"
+                        className="aspect-[16/9] flex items-center justify-center rounded-sm border border-paper-3 bg-paper p-2 transition-colors hover:border-ink"
                       >
                         <Image
                           src={`/brand/partners/${g.no.replace(
@@ -140,9 +140,9 @@ export default function ClientsPage() {
                             ""
                           )}-${idx}.png`}
                           alt={`${g.category} 협력사 ${idx}`}
-                          width={120}
-                          height={60}
-                          className="max-h-full w-auto object-contain opacity-90"
+                          width={240}
+                          height={120}
+                          className="h-full w-full object-contain opacity-90"
                         />
                       </li>
                     );
